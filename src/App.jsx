@@ -3,9 +3,10 @@ import { createClient } from "@supabase/supabase-js";
 import { motion } from "framer-motion";
 
 const PHOTO_BUCKET = "return-photos";
-
-// Supabase 프로젝트 실제 주소입니다. 예전 오타 주소가 Vercel 환경변수에 남아 있어도 이 주소를 우선 사용합니다.
 const SUPABASE_URL = "https://zseibbnawsmmuyiyatbq.supabase.co";
+
+// 운영에서는 Vercel > Settings > Environment Variables의 VITE_SUPABASE_ANON_KEY 값을 우선 사용합니다.
+// service_role / secret key는 절대 넣지 마세요.
 const FALLBACK_SUPABASE_KEY = "sb_publishable_hV2je3UfybBDV1yR0PEkRw_9Qh76iVZ";
 
 function getSupabaseKey() {
@@ -20,11 +21,6 @@ const supabase = createClient(SUPABASE_URL, SUPABASE_KEY, {
   auth: {
     persistSession: false,
     autoRefreshToken: false,
-  },
-  global: {
-    headers: {
-      apikey: SUPABASE_KEY,
-    },
   },
 });
 
@@ -49,11 +45,20 @@ function makeFilePath(file) {
   return `returns/${today()}/${makeId()}.${extension}`;
 }
 
+function createEmptyItem() {
+  return {
+    id: makeId(),
+    itemName: "",
+    quantity: "",
+    unit: "개",
+  };
+}
+
 function createEmptyForm() {
   return {
     receivedDate: today(),
     companyName: "",
-    itemName: "",
+    items: [createEmptyItem()],
     reason: "",
     receiver: "",
     photoFile: null,
@@ -62,12 +67,61 @@ function createEmptyForm() {
   };
 }
 
+function splitTrailingQuantityUnit(text) {
+  const cleanText = String(text || "").trim();
+  const unit = cleanText.endsWith("박스") ? "박스" : cleanText.endsWith("개") ? "개" : "개";
+
+  if (!cleanText.endsWith("박스") && !cleanText.endsWith("개")) {
+    return { itemName: cleanText, quantity: "", unit };
+  }
+
+  const withoutUnit = cleanText.slice(0, cleanText.length - unit.length).trim();
+  let index = withoutUnit.length - 1;
+
+  while (index >= 0) {
+    const char = withoutUnit[index];
+    if ((char >= "0" && char <= "9") || char === ".") {
+      index -= 1;
+    } else {
+      break;
+    }
+  }
+
+  const itemName = withoutUnit.slice(0, index + 1).trim();
+  const quantity = withoutUnit.slice(index + 1).trim();
+
+  return {
+    itemName: itemName || cleanText,
+    quantity,
+    unit,
+  };
+}
+
+function parseBulkItemsText(text) {
+  return String(text || "")
+    .replace(/\r?\n/g, ",")
+    .split(",")
+    .map((part) => part.trim())
+    .filter(Boolean)
+    .map((part) => {
+      const parsed = splitTrailingQuantityUnit(part);
+      return {
+        id: makeId(),
+        itemName: parsed.itemName,
+        quantity: parsed.quantity,
+        unit: parsed.unit,
+      };
+    });
+}
+
 function dbRowToUi(row) {
   return {
     id: row.id,
     receivedDate: row.received_date,
     companyName: row.company_name,
     itemName: row.item_name,
+    quantity: row.quantity || "",
+    unit: row.quantity_unit || "개",
     reason: row.reason || "",
     receiver: row.receiver || "",
     photoUrl: row.photo_url || "",
@@ -83,7 +137,7 @@ function getFilteredRows(rows, view, keyword) {
 
   return rows.filter((row) => {
     const byView = view === "all" ? true : row.status === view;
-    const text = `${row.companyName || ""} ${row.itemName || ""} ${row.reason || ""} ${row.receiver || ""}`.toLowerCase();
+    const text = `${row.companyName || ""} ${row.itemName || ""} ${row.quantity || ""} ${row.unit || ""} ${row.reason || ""} ${row.receiver || ""}`.toLowerCase();
     const byKeyword = cleanKeyword ? text.includes(cleanKeyword) : true;
     return byView && byKeyword;
   });
@@ -177,6 +231,8 @@ function runSelfTests() {
       receivedDate: "2026-04-29",
       companyName: "카페아울렛",
       itemName: "PET 투명컵",
+      quantity: "2",
+      unit: "박스",
       reason: "파손",
       receiver: "김대리",
       status: "pending",
@@ -187,6 +243,8 @@ function runSelfTests() {
       receivedDate: "2026-04-29",
       companyName: "테스트카페",
       itemName: "컵뚜껑",
+      quantity: "500",
+      unit: "개",
       reason: "오배송",
       receiver: "이대리",
       status: "completed",
@@ -199,6 +257,8 @@ function runSelfTests() {
     received_date: "2026-04-29",
     company_name: "A상사",
     item_name: "컵",
+    quantity: "1",
+    quantity_unit: "박스",
     reason: null,
     receiver: null,
     photo_url: null,
@@ -208,9 +268,12 @@ function runSelfTests() {
     created_at: "2026-04-29T00:00:00Z",
   });
 
+  const parsedBulkItems = parseBulkItemsText("16온스페트컵 1박스, 종이컵 500개");
+  const parsedLineBreakItems = parseBulkItemsText("컵뚜껑 2박스\n빨대 100개");
+
   console.assert(today().length === 10, "today() should return YYYY-MM-DD format");
   console.assert(SUPABASE_URL === "https://zseibbnawsmmuyiyatbq.supabase.co", "Supabase URL should be the corrected URL");
-  console.assert(SUPABASE_KEY.length > 20, "Supabase key should not be empty");
+  console.assert(Boolean(SUPABASE_KEY) && SUPABASE_KEY.length > 20, "Supabase key should have fallback or env value");
   console.assert(getSupabaseKey().length > 20, "getSupabaseKey should return a usable key");
   console.assert(getFilteredRows(sampleRows, "pending", "").length === 1, "pending filter should return one row");
   console.assert(getFilteredRows(sampleRows, "completed", "").length === 1, "completed filter should return one row");
@@ -218,6 +281,11 @@ function runSelfTests() {
   console.assert(getFilteredRows(sampleRows, "pending", "카페아울렛").length === 1, "keyword search should work with Korean text");
   console.assert(getFilteredRows(sampleRows, "pending", "없는검색어").length === 0, "unknown keyword should return empty results");
   console.assert(mapped.companyName === "A상사" && mapped.reason === "", "dbRowToUi should normalize database fields");
+  console.assert(mapped.quantity === "1" && mapped.unit === "박스", "dbRowToUi should normalize quantity and unit fields");
+  console.assert(parsedBulkItems.length === 2, "parseBulkItemsText should split comma-separated items");
+  console.assert(parsedBulkItems[0].itemName === "16온스페트컵" && parsedBulkItems[0].quantity === "1" && parsedBulkItems[0].unit === "박스", "parseBulkItemsText should parse box quantity");
+  console.assert(parsedBulkItems[1].itemName === "종이컵" && parsedBulkItems[1].quantity === "500" && parsedBulkItems[1].unit === "개", "parseBulkItemsText should parse piece quantity");
+  console.assert(parsedLineBreakItems.length === 2, "parseBulkItemsText should split line breaks");
 }
 
 if (typeof window !== "undefined") {
@@ -230,9 +298,39 @@ export default function ReturnManagementApp() {
   const [keyword, setKeyword] = useState("");
   const [previewImage, setPreviewImage] = useState(null);
   const [form, setForm] = useState(createEmptyForm);
+  const [bulkItemsText, setBulkItemsText] = useState("");
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [errorMessage, setErrorMessage] = useState("");
+
+  const updateItem = (itemId, field, value) => {
+    setForm((prev) => ({
+      ...prev,
+      items: prev.items.map((item) => (item.id === itemId ? { ...item, [field]: value } : item)),
+    }));
+  };
+
+  const addItem = () => {
+    setForm((prev) => ({ ...prev, items: [...prev.items, createEmptyItem()] }));
+  };
+
+  const removeItem = (itemId) => {
+    setForm((prev) => {
+      if (prev.items.length === 1) return prev;
+      return { ...prev, items: prev.items.filter((item) => item.id !== itemId) };
+    });
+  };
+
+  const applyBulkItemsText = () => {
+    const parsedItems = parseBulkItemsText(bulkItemsText);
+
+    if (parsedItems.length === 0) {
+      alert("빠른입력에 반품 품목을 입력해주세요. 예: 16온스페트컵 1박스, 종이컵 500개");
+      return;
+    }
+
+    setForm((prev) => ({ ...prev, items: parsedItems }));
+  };
 
   const loadRows = async () => {
     setLoading(true);
@@ -320,12 +418,21 @@ export default function ReturnManagementApp() {
       URL.revokeObjectURL(form.photoPreview);
     }
     setForm(createEmptyForm());
+    setBulkItemsText("");
   };
 
   const addRow = async (e) => {
     e.preventDefault();
 
-    if (!form.companyName.trim() || !form.itemName.trim()) {
+    const validItems = form.items
+      .map((item) => ({
+        itemName: item.itemName.trim(),
+        quantity: String(item.quantity || "").trim(),
+        unit: item.unit || "개",
+      }))
+      .filter((item) => item.itemName);
+
+    if (!form.companyName.trim() || validItems.length === 0) {
       alert("상호명과 물품명은 꼭 입력해주세요.");
       return;
     }
@@ -336,27 +443,28 @@ export default function ReturnManagementApp() {
     try {
       const { photoUrl, photoPath, uploadWarning } = await uploadPhotoIfNeeded();
 
-      const payload = {
+      const payload = validItems.map((item) => ({
         received_date: form.receivedDate,
         company_name: form.companyName.trim(),
-        item_name: form.itemName.trim(),
+        item_name: item.itemName,
+        quantity: item.quantity || null,
+        quantity_unit: item.unit,
         reason: form.reason.trim() || null,
         receiver: form.receiver.trim() || null,
         photo_url: photoUrl || null,
         photo_path: photoPath || null,
         status: "pending",
         completed_date: null,
-      };
+      }));
 
       const { data, error } = await supabase
         .from("returns")
         .insert(payload)
-        .select("*")
-        .single();
+        .select("*");
 
       if (error) throw new Error(error.message);
 
-      setRows((prev) => [dbRowToUi(data), ...prev]);
+      setRows((prev) => [...(data || []).map(dbRowToUi), ...prev]);
       resetForm();
       setView("pending");
 
@@ -364,7 +472,7 @@ export default function ReturnManagementApp() {
         setErrorMessage(`${uploadWarning} 반품 내역은 사진 없이 등록되었습니다. Supabase Storage의 return-photos 버킷과 정책을 확인해주세요.`);
       }
     } catch (error) {
-      setErrorMessage(`반품 등록 실패: ${error.message || "Failed to fetch"}. Supabase URL 또는 Vercel의 VITE_SUPABASE_ANON_KEY 값을 확인해주세요.`);
+      setErrorMessage(`반품 등록 실패: ${error.message || "Failed to fetch"}. Vercel의 VITE_SUPABASE_ANON_KEY 값 또는 Supabase DB 컬럼을 확인해주세요.`);
     } finally {
       setSaving(false);
     }
@@ -503,15 +611,83 @@ export default function ReturnManagementApp() {
               />
             </label>
 
-            <label className="block mb-4">
-              <span className="text-sm font-bold">물품명</span>
-              <input
-                value={form.itemName}
-                onChange={(e) => setForm({ ...form, itemName: e.target.value })}
-                placeholder="예: 16온스 PET 투명컵"
-                className="mt-2 w-full rounded-2xl border border-[#dfd3bf] px-4 py-3 outline-none focus:border-[#d9792b]"
-              />
-            </label>
+            <div className="mb-4">
+              <div className="mb-4 rounded-2xl border border-[#eadfca] bg-[#fffaf0] p-3">
+                <div className="flex items-center justify-between gap-3 mb-2">
+                  <div>
+                    <span className="text-sm font-bold">품목 빠른입력</span>
+                    <p className="mt-1 text-xs text-[#7b7062]">예: 16온스페트컵 1박스, 종이컵 500개</p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={applyBulkItemsText}
+                    className="shrink-0 rounded-xl bg-[#26231d] px-3 py-2 text-xs font-black text-white hover:bg-black"
+                  >
+                    적용
+                  </button>
+                </div>
+                <textarea
+                  value={bulkItemsText}
+                  onChange={(e) => setBulkItemsText(e.target.value)}
+                  placeholder="16온스페트컵 1박스, 종이컵 1박스"
+                  rows={2}
+                  className="w-full rounded-2xl border border-[#dfd3bf] bg-white px-4 py-3 outline-none focus:border-[#d9792b] resize-none"
+                />
+              </div>
+
+              <div className="flex items-center justify-between gap-3 mb-2">
+                <span className="text-sm font-bold">반품 품목 / 수량</span>
+                <button
+                  type="button"
+                  onClick={addItem}
+                  className="rounded-xl border border-[#dfd3bf] px-3 py-2 text-xs font-black hover:border-[#d9792b]"
+                >
+                  + 품목 추가
+                </button>
+              </div>
+
+              <div className="space-y-3">
+                {form.items.map((item, index) => (
+                  <div key={item.id} className="rounded-2xl border border-[#eadfca] bg-[#fffaf0] p-3">
+                    <div className="flex items-center justify-between mb-2">
+                      <p className="text-xs font-black text-[#d9792b]">품목 {index + 1}</p>
+                      {form.items.length > 1 && (
+                        <button
+                          type="button"
+                          onClick={() => removeItem(item.id)}
+                          className="text-xs font-bold text-red-500 hover:underline"
+                        >
+                          삭제
+                        </button>
+                      )}
+                    </div>
+                    <input
+                      value={item.itemName}
+                      onChange={(e) => updateItem(item.id, "itemName", e.target.value)}
+                      placeholder="예: 16온스 PET 투명컵"
+                      className="w-full rounded-2xl border border-[#dfd3bf] bg-white px-4 py-3 outline-none focus:border-[#d9792b]"
+                    />
+                    <div className="grid grid-cols-[1fr_100px] gap-2 mt-2">
+                      <input
+                        value={item.quantity}
+                        onChange={(e) => updateItem(item.id, "quantity", e.target.value)}
+                        placeholder="수량"
+                        inputMode="decimal"
+                        className="w-full rounded-2xl border border-[#dfd3bf] bg-white px-4 py-3 outline-none focus:border-[#d9792b]"
+                      />
+                      <select
+                        value={item.unit}
+                        onChange={(e) => updateItem(item.id, "unit", e.target.value)}
+                        className="w-full rounded-2xl border border-[#dfd3bf] bg-white px-3 py-3 outline-none focus:border-[#d9792b]"
+                      >
+                        <option value="개">개</option>
+                        <option value="박스">박스</option>
+                      </select>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
 
             <label className="block mb-4">
               <span className="text-sm font-bold">반품사유</span>
@@ -630,6 +806,7 @@ export default function ReturnManagementApp() {
                     <th className="text-left p-4">반품받은 일자</th>
                     <th className="text-left p-4">상호명</th>
                     <th className="text-left p-4">물품명</th>
+                    <th className="text-left p-4">수량</th>
                     <th className="text-left p-4">반품사유</th>
                     <th className="text-left p-4">접수자</th>
                     <th className="text-left p-4">사진</th>
@@ -640,13 +817,13 @@ export default function ReturnManagementApp() {
                 <tbody>
                   {loading ? (
                     <tr>
-                      <td colSpan="9" className="p-10 text-center text-[#8b8174]">
+                      <td colSpan="10" className="p-10 text-center text-[#8b8174]">
                         불러오는 중...
                       </td>
                     </tr>
                   ) : filteredRows.length === 0 ? (
                     <tr>
-                      <td colSpan="9" className="p-10 text-center text-[#8b8174]">
+                      <td colSpan="10" className="p-10 text-center text-[#8b8174]">
                         등록된 반품 내역이 없습니다.
                       </td>
                     </tr>
@@ -667,6 +844,7 @@ export default function ReturnManagementApp() {
                         <td className="p-4 font-semibold">{row.receivedDate}</td>
                         <td className="p-4 font-bold">{row.companyName}</td>
                         <td className="p-4">{row.itemName}</td>
+                        <td className="p-4 font-semibold">{row.quantity ? `${row.quantity}${row.unit || ""}` : "-"}</td>
                         <td className="p-4 max-w-[230px] whitespace-pre-wrap">{row.reason || "-"}</td>
                         <td className="p-4">{row.receiver || "-"}</td>
                         <td className="p-4">
