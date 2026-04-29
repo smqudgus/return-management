@@ -6,7 +6,15 @@ const PHOTO_BUCKET = "return-photos";
 
 // Supabase 프로젝트 실제 주소입니다. 예전 오타 주소가 Vercel 환경변수에 남아 있어도 이 주소를 우선 사용합니다.
 const SUPABASE_URL = "https://zseibbnawsmmuyiyatbq.supabase.co";
-const SUPABASE_KEY = "sb_publishable_hV2je3UfybBDV1yR0PEkRw_9Qh76iVZ";
+const FALLBACK_SUPABASE_KEY = "sb_publishable_hV2je3UfybBDV1yR0PEkRw_9Qh76iVZ";
+
+function getSupabaseKey() {
+  const viteEnv = import.meta.env || {};
+  const envKey = typeof viteEnv.VITE_SUPABASE_ANON_KEY === "string" ? viteEnv.VITE_SUPABASE_ANON_KEY.trim() : "";
+  return envKey || FALLBACK_SUPABASE_KEY;
+}
+
+const SUPABASE_KEY = getSupabaseKey();
 
 const supabase = createClient(SUPABASE_URL, SUPABASE_KEY, {
   auth: {
@@ -203,6 +211,7 @@ function runSelfTests() {
   console.assert(today().length === 10, "today() should return YYYY-MM-DD format");
   console.assert(SUPABASE_URL === "https://zseibbnawsmmuyiyatbq.supabase.co", "Supabase URL should be the corrected URL");
   console.assert(SUPABASE_KEY.length > 20, "Supabase key should not be empty");
+  console.assert(getSupabaseKey().length > 20, "getSupabaseKey should return a usable key");
   console.assert(getFilteredRows(sampleRows, "pending", "").length === 1, "pending filter should return one row");
   console.assert(getFilteredRows(sampleRows, "completed", "").length === 1, "completed filter should return one row");
   console.assert(getFilteredRows(sampleRows, "all", "컵").length === 2, "keyword search should find matching rows");
@@ -355,7 +364,7 @@ export default function ReturnManagementApp() {
         setErrorMessage(`${uploadWarning} 반품 내역은 사진 없이 등록되었습니다. Supabase Storage의 return-photos 버킷과 정책을 확인해주세요.`);
       }
     } catch (error) {
-      setErrorMessage(`반품 등록 실패: ${error.message || "Failed to fetch"}. Supabase URL 또는 API KEY 설정을 확인해주세요.`);
+      setErrorMessage(`반품 등록 실패: ${error.message || "Failed to fetch"}. Supabase URL 또는 Vercel의 VITE_SUPABASE_ANON_KEY 값을 확인해주세요.`);
     } finally {
       setSaving(false);
     }
