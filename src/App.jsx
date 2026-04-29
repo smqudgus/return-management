@@ -82,7 +82,7 @@ const PHOTO_BUCKET = "return-photos";
 // 기본 연결값: Vercel 환경변수가 없을 때도 바로 연결되게 넣어둔 값입니다.
 // 실제 운영에서는 Vercel > Settings > Environment Variables에 같은 값을 넣는 방식을 추천합니다.
 const DEFAULT_SUPABASE_URL = "https://zseibbnawsmmuyiyatbq.supabase.co";
-const DEFAULT_SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InpzZWliYm5hd3NtbXV5aXlhdGJxIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzc0NDA1MjQsImV4cCI6MjA5MzAxNjUyNH0.N1dk--i8pLI1JNlYeNSCfEsWyunYvqL8SXH5nMkSZHo";
+const DEFAULT_SUPABASE_ANON_KEY = "sb_publishable_hV2je3UfybBDV1yR0PEkRw_9Qh76iVZ";
 
 function getEnvValue(key) {
   const viteEnv = import.meta.env || {};
@@ -330,7 +330,6 @@ export default function ReturnManagementApp() {
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [errorMessage, setErrorMessage] = useState("");
-  const [debugMessage, setDebugMessage] = useState("");
 
   const isReady = Boolean(supabase);
 
@@ -360,36 +359,6 @@ export default function ReturnManagementApp() {
     }
   };
 
-  const testConnection = async () => {
-    setDebugMessage("연결 테스트 중...");
-    setErrorMessage("");
-
-    if (!supabaseConfig.url || !supabaseConfig.anonKey) {
-      setDebugMessage("Supabase URL 또는 KEY가 비어 있습니다.");
-      return;
-    }
-
-    try {
-      const response = await fetch(`${supabaseConfig.url}/rest/v1/returns?select=id&limit=1`, {
-        method: "GET",
-        headers: {
-          apikey: supabaseConfig.anonKey,
-          Authorization: `Bearer ${supabaseConfig.anonKey}`,
-        },
-      });
-
-      const text = await response.text();
-
-      if (!response.ok) {
-        setDebugMessage(`연결 실패: HTTP ${response.status} / ${text.slice(0, 300)}`);
-        return;
-      }
-
-      setDebugMessage("연결 성공: Supabase returns 테이블을 읽을 수 있습니다.");
-    } catch (error) {
-      setDebugMessage(`연결 실패: ${error.message || "Failed to fetch"}. URL, API KEY, 브라우저 차단, 네트워크를 확인해야 합니다.`);
-    }
-  };
 
   useEffect(() => {
     loadRows();
@@ -580,7 +549,7 @@ export default function ReturnManagementApp() {
             로컬에서는 프로젝트 최상단 <code className="bg-[#f7f3ea] px-2 py-1 rounded-lg">.env</code> 파일에, Vercel에서는 Project Settings의 Environment Variables에 아래 값을 넣어주세요.
           </p>
           <pre className="mt-4 overflow-x-auto rounded-2xl bg-[#26231d] text-white p-4 text-sm">
-{`VITE_SUPABASE_URL=https://zseibbnawssmmuyiyatbq.supabase.co
+{`VITE_SUPABASE_URL=https://zseibbnawsmmuyiyatbq.supabase.co
 VITE_SUPABASE_ANON_KEY=sb_publishable_...`}
           </pre>
           <p className="mt-4 text-sm text-[#7b7062] leading-6">
@@ -625,24 +594,6 @@ VITE_SUPABASE_ANON_KEY=sb_publishable_...`}
             {errorMessage}
           </div>
         )}
-
-        <div className="mb-5 rounded-2xl border border-[#eadfca] bg-white px-4 py-4 text-sm">
-          <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3">
-            <div className="text-[#6b6256] leading-6">
-              <p className="font-black text-[#26231d]">Supabase 연결 상태 확인</p>
-              <p>URL: {supabaseConfig.url || "없음"}</p>
-              <p>KEY: {supabaseConfig.anonKey ? `${supabaseConfig.anonKey.slice(0, 14)}...` : "없음"}</p>
-              {debugMessage && <p className="mt-2 font-bold text-[#d9792b]">{debugMessage}</p>}
-            </div>
-            <button
-              type="button"
-              onClick={testConnection}
-              className="rounded-2xl bg-[#26231d] text-white px-5 py-3 font-black hover:bg-black"
-            >
-              연결 테스트
-            </button>
-          </div>
-        </div>
 
         <div className="grid lg:grid-cols-[420px_1fr] gap-6">
           <motion.form
