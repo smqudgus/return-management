@@ -2,126 +2,23 @@ import React, { useEffect, useMemo, useState } from "react";
 import { createClient } from "@supabase/supabase-js";
 import { motion } from "framer-motion";
 
-/**
- * 실제 회사 배포용 Supabase 연동 버전
- *
- * 필요한 환경변수, Vercel > Project > Settings > Environment Variables에 등록
- * VITE_SUPABASE_URL=본인 Supabase Project URL
- * VITE_SUPABASE_ANON_KEY=본인 Supabase anon public key
- *
- * 로컬에서 실행할 때는 프로젝트 최상단에 .env 파일 생성
- * VITE_SUPABASE_URL=https://xxxx.supabase.co
- * VITE_SUPABASE_ANON_KEY=eyJxxxx
- *
- * 중요: 환경변수를 추가/수정한 뒤에는 개발 서버 또는 Vercel 배포를 다시 시작해야 합니다.
- *
- * Supabase SQL Editor에서 먼저 실행할 SQL
- *
- * create table if not exists public.returns (
- *   id uuid primary key default gen_random_uuid(),
- *   received_date date not null default current_date,
- *   company_name text not null,
- *   item_name text not null,
- *   reason text,
- *   receiver text,
- *   photo_url text,
- *   photo_path text,
- *   status text not null default 'pending' check (status in ('pending', 'completed')),
- *   completed_date date,
- *   created_at timestamptz not null default now(),
- *   updated_at timestamptz not null default now()
- * );
- *
- * alter table public.returns enable row level security;
- *
- * -- 간단 사내용: 링크 아는 직원은 입력/조회/수정/삭제 가능
- * -- 더 안전하게 하려면 Supabase Auth 로그인 정책으로 변경 필요
- * create policy "Allow public read returns"
- * on public.returns for select
- * using (true);
- *
- * create policy "Allow public insert returns"
- * on public.returns for insert
- * with check (true);
- *
- * create policy "Allow public update returns"
- * on public.returns for update
- * using (true)
- * with check (true);
- *
- * create policy "Allow public delete returns"
- * on public.returns for delete
- * using (true);
- *
- * -- 사진 저장소 만들기
- * -- Supabase > Storage > New bucket
- * -- bucket name: return-photos
- * -- Public bucket: ON
- *
- * -- Storage 정책, SQL Editor에서 실행
- * create policy "Allow public upload return photos"
- * on storage.objects for insert
- * with check (bucket_id = 'return-photos');
- *
- * create policy "Allow public read return photos"
- * on storage.objects for select
- * using (bucket_id = 'return-photos');
- *
- * create policy "Allow public update return photos"
- * on storage.objects for update
- * using (bucket_id = 'return-photos')
- * with check (bucket_id = 'return-photos');
- *
- * create policy "Allow public delete return photos"
- * on storage.objects for delete
- * using (bucket_id = 'return-photos');
- */
-
 const PHOTO_BUCKET = "return-photos";
 
-// 기본 연결값: Vercel 환경변수가 없을 때도 바로 연결되게 넣어둔 값입니다.
-// 실제 운영에서는 Vercel > Settings > Environment Variables에 같은 값을 넣는 방식을 추천합니다.
-const DEFAULT_SUPABASE_URL = "https://zseibbnawsmmuyiyatbq.supabase.co";
-const DEFAULT_SUPABASE_ANON_KEY = "sb_publishable_hV2je3UfybBDV1yR0PEkRw_9Qh76iVZ";
+// Supabase 프로젝트 실제 주소입니다. 예전 오타 주소가 Vercel 환경변수에 남아 있어도 이 주소를 우선 사용합니다.
+const SUPABASE_URL = "https://zseibbnawsmmuyiyatbq.supabase.co";
+const SUPABASE_KEY = "sb_publishable_hV2je3UfybBDV1yR0PEkRw_9Qh76iVZ";
 
-function getEnvValue(key) {
-  const viteEnv = import.meta.env || {};
-  const globalEnv = typeof globalThis !== "undefined" && globalThis.__APP_ENV__ ? globalThis.__APP_ENV__ : {};
-  const fallbackEnv = {
-    VITE_SUPABASE_URL: DEFAULT_SUPABASE_URL,
-    VITE_SUPABASE_ANON_KEY: DEFAULT_SUPABASE_ANON_KEY,
-  };
-
-  return viteEnv[key] || globalEnv[key] || fallbackEnv[key] || "";
-}
-
-function createSupabaseClient() {
-  const url = getEnvValue("VITE_SUPABASE_URL").trim();
-  const anonKey = getEnvValue("VITE_SUPABASE_ANON_KEY").trim();
-
-  if (!url || !anonKey) {
-    return { client: null, url, anonKey };
-  }
-
-  return {
-    client: createClient(url, anonKey, {
-      auth: {
-        persistSession: false,
-        autoRefreshToken: false,
-      },
-      global: {
-        headers: {
-          apikey: anonKey,
-        },
-      },
-    }),
-    url,
-    anonKey,
-  };
-}
-
-const supabaseConfig = createSupabaseClient();
-const supabase = supabaseConfig.client;
+const supabase = createClient(SUPABASE_URL, SUPABASE_KEY, {
+  auth: {
+    persistSession: false,
+    autoRefreshToken: false,
+  },
+  global: {
+    headers: {
+      apikey: SUPABASE_KEY,
+    },
+  },
+});
 
 function today() {
   const d = new Date();
@@ -131,13 +28,17 @@ function today() {
   return `${yyyy}-${mm}-${dd}`;
 }
 
+function makeId() {
+  if (typeof crypto !== "undefined" && crypto.randomUUID) {
+    return crypto.randomUUID();
+  }
+  return `${Date.now()}-${Math.random().toString(16).slice(2)}`;
+}
+
 function makeFilePath(file) {
-  const extension = file.name.includes(".") ? file.name.split(".").pop() : "jpg";
-  const safeExtension = extension.replace(/[^a-zA-Z0-9]/g, "") || "jpg";
-  const id = typeof crypto !== "undefined" && crypto.randomUUID
-    ? crypto.randomUUID()
-    : `${Date.now()}-${Math.random().toString(16).slice(2)}`;
-  return `returns/${today()}/${id}.${safeExtension}`;
+  const rawExtension = file && file.name && file.name.includes(".") ? file.name.split(".").pop() : "jpg";
+  const extension = String(rawExtension || "jpg").replace(/[^a-zA-Z0-9]/g, "") || "jpg";
+  return `returns/${today()}/${makeId()}.${extension}`;
 }
 
 function createEmptyForm() {
@@ -299,22 +200,15 @@ function runSelfTests() {
     created_at: "2026-04-29T00:00:00Z",
   });
 
-  const oldAppEnv = globalThis.__APP_ENV__;
-  globalThis.__APP_ENV__ = { VITE_TEST_SAMPLE_KEY: "sample-value" };
-
   console.assert(today().length === 10, "today() should return YYYY-MM-DD format");
+  console.assert(SUPABASE_URL === "https://zseibbnawsmmuyiyatbq.supabase.co", "Supabase URL should be the corrected URL");
+  console.assert(SUPABASE_KEY.length > 20, "Supabase key should not be empty");
   console.assert(getFilteredRows(sampleRows, "pending", "").length === 1, "pending filter should return one row");
   console.assert(getFilteredRows(sampleRows, "completed", "").length === 1, "completed filter should return one row");
   console.assert(getFilteredRows(sampleRows, "all", "컵").length === 2, "keyword search should find matching rows");
   console.assert(getFilteredRows(sampleRows, "pending", "카페아울렛").length === 1, "keyword search should work with Korean text");
   console.assert(getFilteredRows(sampleRows, "pending", "없는검색어").length === 0, "unknown keyword should return empty results");
   console.assert(mapped.companyName === "A상사" && mapped.reason === "", "dbRowToUi should normalize database fields");
-  console.assert(getEnvValue("VITE_TEST_SAMPLE_KEY") === "sample-value", "getEnvValue should safely read fallback global env");
-  console.assert(getEnvValue("VITE_UNKNOWN_KEY") === "", "getEnvValue should return empty string for missing env");
-  console.assert(getEnvValue("VITE_SUPABASE_URL").includes("supabase.co"), "getEnvValue should provide default Supabase URL");
-  console.assert(getEnvValue("VITE_SUPABASE_ANON_KEY").startsWith("sb_publishable_"), "getEnvValue should provide default publishable key");
-
-  globalThis.__APP_ENV__ = oldAppEnv;
 }
 
 if (typeof window !== "undefined") {
@@ -331,11 +225,7 @@ export default function ReturnManagementApp() {
   const [saving, setSaving] = useState(false);
   const [errorMessage, setErrorMessage] = useState("");
 
-  const isReady = Boolean(supabase);
-
   const loadRows = async () => {
-    if (!supabase) return;
-
     setLoading(true);
     setErrorMessage("");
 
@@ -347,7 +237,6 @@ export default function ReturnManagementApp() {
 
       if (error) {
         setErrorMessage(`반품 내역을 불러오지 못했습니다: ${error.message}`);
-        setLoading(false);
         return;
       }
 
@@ -358,7 +247,6 @@ export default function ReturnManagementApp() {
       setLoading(false);
     }
   };
-
 
   useEffect(() => {
     loadRows();
@@ -427,7 +315,6 @@ export default function ReturnManagementApp() {
 
   const addRow = async (e) => {
     e.preventDefault();
-    if (!supabase) return;
 
     if (!form.companyName.trim() || !form.itemName.trim()) {
       alert("상호명과 물품명은 꼭 입력해주세요.");
@@ -458,7 +345,7 @@ export default function ReturnManagementApp() {
         .select("*")
         .single();
 
-      if (error) throw new Error(`반품 등록 실패: ${error.message}`);
+      if (error) throw new Error(error.message);
 
       setRows((prev) => [dbRowToUi(data), ...prev]);
       resetForm();
@@ -468,15 +355,13 @@ export default function ReturnManagementApp() {
         setErrorMessage(`${uploadWarning} 반품 내역은 사진 없이 등록되었습니다. Supabase Storage의 return-photos 버킷과 정책을 확인해주세요.`);
       }
     } catch (error) {
-      setErrorMessage(`반품 등록 실패: ${error.message || "Failed to fetch"}. Supabase 연결 테스트 버튼을 눌러 원인을 확인해주세요.`);
+      setErrorMessage(`반품 등록 실패: ${error.message || "Failed to fetch"}. Supabase URL 또는 API KEY 설정을 확인해주세요.`);
     } finally {
       setSaving(false);
     }
   };
 
   const completeRow = async (id) => {
-    if (!supabase) return;
-
     const completedDate = today();
     setErrorMessage("");
 
@@ -496,8 +381,6 @@ export default function ReturnManagementApp() {
   };
 
   const restoreRow = async (id) => {
-    if (!supabase) return;
-
     setErrorMessage("");
 
     const { data, error } = await supabase
@@ -516,7 +399,6 @@ export default function ReturnManagementApp() {
   };
 
   const deleteRow = async (row) => {
-    if (!supabase) return;
     if (!confirm("이 반품 내역을 삭제할까요?")) return;
 
     setErrorMessage("");
@@ -538,27 +420,6 @@ export default function ReturnManagementApp() {
   const filteredRows = useMemo(() => getFilteredRows(rows, view, keyword), [rows, view, keyword]);
   const pendingCount = rows.filter((row) => row.status === "pending").length;
   const completedCount = rows.filter((row) => row.status === "completed").length;
-
-  if (!isReady) {
-    return (
-      <main className="min-h-screen bg-[#f7f3ea] text-[#26231d] p-4 md:p-8 flex items-center justify-center">
-        <section className="max-w-2xl rounded-[2rem] bg-white border border-[#eadfca] p-6 md:p-8 shadow-sm">
-          <p className="text-sm font-semibold text-[#d9792b] mb-2">환경변수 설정 필요</p>
-          <h1 className="text-3xl font-black mb-3">Supabase 연결 정보가 없습니다</h1>
-          <p className="text-[#6b6256] leading-7">
-            로컬에서는 프로젝트 최상단 <code className="bg-[#f7f3ea] px-2 py-1 rounded-lg">.env</code> 파일에, Vercel에서는 Project Settings의 Environment Variables에 아래 값을 넣어주세요.
-          </p>
-          <pre className="mt-4 overflow-x-auto rounded-2xl bg-[#26231d] text-white p-4 text-sm">
-{`VITE_SUPABASE_URL=https://zseibbnawsmmuyiyatbq.supabase.co
-VITE_SUPABASE_ANON_KEY=sb_publishable_...`}
-          </pre>
-          <p className="mt-4 text-sm text-[#7b7062] leading-6">
-            값을 넣은 뒤에는 개발 서버를 다시 실행하거나 Vercel에서 다시 배포해야 적용됩니다.
-          </p>
-        </section>
-      </main>
-    );
-  }
 
   return (
     <main className="min-h-screen bg-[#f7f3ea] text-[#26231d] p-4 md:p-8">
