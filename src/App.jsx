@@ -96,14 +96,28 @@ function getEnvValue(key) {
 }
 
 function createSupabaseClient() {
-  const url = getEnvValue("VITE_SUPABASE_URL");
-  const anonKey = getEnvValue("VITE_SUPABASE_ANON_KEY");
+  const url = getEnvValue("VITE_SUPABASE_URL").trim();
+  const anonKey = getEnvValue("VITE_SUPABASE_ANON_KEY").trim();
 
   if (!url || !anonKey) {
     return { client: null, url, anonKey };
   }
 
-  return { client: createClient(url, anonKey), url, anonKey };
+  return {
+    client: createClient(url, anonKey, {
+      auth: {
+        persistSession: false,
+        autoRefreshToken: false,
+      },
+      global: {
+        headers: {
+          apikey: anonKey,
+        },
+      },
+    }),
+    url,
+    anonKey,
+  };
 }
 
 const supabaseConfig = createSupabaseClient();
@@ -316,6 +330,7 @@ export default function ReturnManagementApp() {
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [errorMessage, setErrorMessage] = useState("");
+  const [debugMessage, setDebugMessage] = useState("");
 
   const isReady = Boolean(supabase);
 
@@ -325,19 +340,55 @@ export default function ReturnManagementApp() {
     setLoading(true);
     setErrorMessage("");
 
-    const { data, error } = await supabase
-      .from("returns")
-      .select("*")
-      .order("created_at", { ascending: false });
+    try {
+      const { data, error } = await supabase
+        .from("returns")
+        .select("*")
+        .order("created_at", { ascending: false });
 
-    if (error) {
-      setErrorMessage(`반품 내역을 불러오지 못했습니다: ${error.message}`);
+      if (error) {
+        setErrorMessage(`반품 내역을 불러오지 못했습니다: ${error.message}`);
+        setLoading(false);
+        return;
+      }
+
+      setRows((data || []).map(dbRowToUi));
+    } catch (error) {
+      setErrorMessage(`Supabase 연결 실패: ${error.message || "네트워크 요청이 차단되었습니다."}`);
+    } finally {
       setLoading(false);
+    }
+  };
+
+  const testConnection = async () => {
+    setDebugMessage("연결 테스트 중...");
+    setErrorMessage("");
+
+    if (!supabaseConfig.url || !supabaseConfig.anonKey) {
+      setDebugMessage("Supabase URL 또는 KEY가 비어 있습니다.");
       return;
     }
 
-    setRows((data || []).map(dbRowToUi));
-    setLoading(false);
+    try {
+      const response = await fetch(`${supabaseConfig.url}/rest/v1/returns?select=id&limit=1`, {
+        method: "GET",
+        headers: {
+          apikey: supabaseConfig.anonKey,
+          Authorization: `Bearer ${supabaseConfig.anonKey}`,
+        },
+      });
+
+      const text = await response.text();
+
+      if (!response.ok) {
+        setDebugMessage(`연결 실패: HTTP ${response.status} / ${text.slice(0, 300)}`);
+        return;
+      }
+
+      setDebugMessage("연결 성공: Supabase returns 테이블을 읽을 수 있습니다.");
+    } catch (error) {
+      setDebugMessage(`연결 실패: ${error.message || "Failed to fetch"}. URL, API KEY, 브라우저 차단, 네트워크를 확인해야 합니다.`);
+    }
   };
 
   useEffect(() => {
@@ -366,22 +417,36 @@ export default function ReturnManagementApp() {
   };
 
   const uploadPhotoIfNeeded = async () => {
-    if (!form.photoFile) return { photoUrl: "", photoPath: "" };
+    if (!form.photoFile) return { photoUrl: "", photoPath: "", uploadWarning: "" };
 
     const photoPath = makeFilePath(form.photoFile);
-    const { error: uploadError } = await supabase.storage
-      .from(PHOTO_BUCKET)
-      .upload(photoPath, form.photoFile, {
-        cacheControl: "3600",
-        upsert: false,
-      });
 
-    if (uploadError) {
-      throw new Error(`사진 업로드 실패: ${uploadError.message}`);
+    try {
+      const { error: uploadError } = await supabase.storage
+        .from(PHOTO_BUCKET)
+        .upload(photoPath, form.photoFile, {
+          cacheControl: "3600",
+          upsert: false,
+          contentType: form.photoFile.type || "image/jpeg",
+        });
+
+      if (uploadError) {
+        return {
+          photoUrl: "",
+          photoPath: "",
+          uploadWarning: `사진 업로드 실패: ${uploadError.message}`,
+        };
+      }
+
+      const { data } = supabase.storage.from(PHOTO_BUCKET).getPublicUrl(photoPath);
+      return { photoUrl: data.publicUrl, photoPath, uploadWarning: "" };
+    } catch (error) {
+      return {
+        photoUrl: "",
+        photoPath: "",
+        uploadWarning: `사진 업로드 실패: ${error.message || "네트워크 또는 Storage 설정을 확인해주세요."}`,
+      };
     }
-
-    const { data } = supabase.storage.from(PHOTO_BUCKET).getPublicUrl(photoPath);
-    return { photoUrl: data.publicUrl, photoPath };
   };
 
   const resetForm = () => {
@@ -404,7 +469,7 @@ export default function ReturnManagementApp() {
     setErrorMessage("");
 
     try {
-      const { photoUrl, photoPath } = await uploadPhotoIfNeeded();
+      const { photoUrl, photoPath, uploadWarning } = await uploadPhotoIfNeeded();
 
       const payload = {
         received_date: form.receivedDate,
@@ -429,8 +494,12 @@ export default function ReturnManagementApp() {
       setRows((prev) => [dbRowToUi(data), ...prev]);
       resetForm();
       setView("pending");
+
+      if (uploadWarning) {
+        setErrorMessage(`${uploadWarning} 반품 내역은 사진 없이 등록되었습니다. Supabase Storage의 return-photos 버킷과 정책을 확인해주세요.`);
+      }
     } catch (error) {
-      setErrorMessage(error.message || "알 수 없는 오류가 발생했습니다.");
+      setErrorMessage(`반품 등록 실패: ${error.message || "Failed to fetch"}. Supabase 연결 테스트 버튼을 눌러 원인을 확인해주세요.`);
     } finally {
       setSaving(false);
     }
@@ -556,6 +625,24 @@ VITE_SUPABASE_ANON_KEY=sb_publishable_...`}
             {errorMessage}
           </div>
         )}
+
+        <div className="mb-5 rounded-2xl border border-[#eadfca] bg-white px-4 py-4 text-sm">
+          <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3">
+            <div className="text-[#6b6256] leading-6">
+              <p className="font-black text-[#26231d]">Supabase 연결 상태 확인</p>
+              <p>URL: {supabaseConfig.url || "없음"}</p>
+              <p>KEY: {supabaseConfig.anonKey ? `${supabaseConfig.anonKey.slice(0, 14)}...` : "없음"}</p>
+              {debugMessage && <p className="mt-2 font-bold text-[#d9792b]">{debugMessage}</p>}
+            </div>
+            <button
+              type="button"
+              onClick={testConnection}
+              className="rounded-2xl bg-[#26231d] text-white px-5 py-3 font-black hover:bg-black"
+            >
+              연결 테스트
+            </button>
+          </div>
+        </div>
 
         <div className="grid lg:grid-cols-[420px_1fr] gap-6">
           <motion.form
