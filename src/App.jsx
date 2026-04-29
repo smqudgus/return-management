@@ -81,8 +81,8 @@ const PHOTO_BUCKET = "return-photos";
 
 // 기본 연결값: Vercel 환경변수가 없을 때도 바로 연결되게 넣어둔 값입니다.
 // 실제 운영에서는 Vercel > Settings > Environment Variables에 같은 값을 넣는 방식을 추천합니다.
-const DEFAULT_SUPABASE_URL = "https://zseibbnawssmmuyiyatbq.supabase.co";
-const DEFAULT_SUPABASE_ANON_KEY = "sb_publishable_hV2je3UfybBDV1yR0PEkRw_9Qh76iVZ";
+const DEFAULT_SUPABASE_URL = "https://zseibbnawsmmuyiyatbq.supabase.co";
+const DEFAULT_SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InpzZWliYm5hd3NtbXV5aXlhdGJxIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzc0NDA1MjQsImV4cCI6MjA5MzAxNjUyNH0.N1dk--i8pLI1JNlYeNSCfEsWyunYvqL8SXH5nMkSZHo";
 
 function getEnvValue(key) {
   const viteEnv = import.meta.env || {};
