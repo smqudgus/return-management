@@ -621,12 +621,12 @@ export default function ReturnManagementApp() {
   const completedCount = rows.filter((row) => row.status === "completed").length;
 
   return (
-    <main className="min-h-screen bg-[#f7f3ea] text-[#26231d] p-4 md:p-8">
-      <div className="mx-auto max-w-7xl">
+    <main className="min-h-screen w-full bg-[#f7f3ea] text-[#26231d] p-4 md:p-8 overflow-x-hidden">
+      <div className="mx-auto w-full max-w-none">
         <motion.section
           initial={{ opacity: 0, y: 16 }}
           animate={{ opacity: 1, y: 0 }}
-          className="mb-6 rounded-[2rem] bg-[#fffaf0] border border-[#e8ddc8] shadow-sm p-6 md:p-8"
+          className="mb-6 w-full rounded-[2rem] bg-[#fffaf0] border border-[#e8ddc8] shadow-sm p-6 md:p-8"
         >
           <div className="flex flex-col md:flex-row md:items-end md:justify-between gap-5">
             <div>
@@ -655,7 +655,7 @@ export default function ReturnManagementApp() {
           </div>
         )}
 
-        <div className="grid lg:grid-cols-[420px_1fr] gap-6">
+        <div className="grid w-full lg:grid-cols-[420px_minmax(0,1fr)] gap-6">
           <motion.form
             initial={{ opacity: 0, y: 16 }}
             animate={{ opacity: 1, y: 0 }}
@@ -827,7 +827,7 @@ export default function ReturnManagementApp() {
             initial={{ opacity: 0, y: 16 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ delay: 0.1 }}
-            className="rounded-[2rem] bg-white border border-[#eadfca] shadow-sm p-5 md:p-6"
+            className="min-w-0 rounded-[2rem] bg-white border border-[#eadfca] shadow-sm p-5 md:p-6"
           >
             <div className="flex flex-col xl:flex-row xl:items-center xl:justify-between gap-4 mb-5">
               <div>
@@ -880,7 +880,7 @@ export default function ReturnManagementApp() {
               </div>
             </div>
 
-            <div className="overflow-x-auto rounded-3xl border border-[#eadfca]">
+            <div className="w-full overflow-x-auto rounded-3xl border border-[#eadfca]">
               <table className="w-full min-w-[1500px] table-fixed text-sm">
                 <thead className="bg-[#fff6e8] text-[#6b6256]">
                   <tr>
