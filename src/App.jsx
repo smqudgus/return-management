@@ -143,6 +143,20 @@ function getFilteredRows(rows, view, keyword) {
   });
 }
 
+function sortRowsByReceivedDate(rows, direction) {
+  return [...rows].sort((a, b) => {
+    const aTime = new Date(a.receivedDate || "1900-01-01").getTime();
+    const bTime = new Date(b.receivedDate || "1900-01-01").getTime();
+    return direction === "asc" ? aTime - bTime : bTime - aTime;
+  });
+}
+
+function truncateReason(reason, limit = 3) {
+  const text = String(reason || "").trim();
+  if (!text) return "-";
+  return text.length > limit ? `${text.slice(0, limit)}...` : text;
+}
+
 function Icon({ name, size = 18, className = "" }) {
   const commonProps = {
     width: size,
@@ -286,6 +300,11 @@ function runSelfTests() {
   console.assert(parsedBulkItems[0].itemName === "16온스페트컵" && parsedBulkItems[0].quantity === "1" && parsedBulkItems[0].unit === "박스", "parseBulkItemsText should parse box quantity");
   console.assert(parsedBulkItems[1].itemName === "종이컵" && parsedBulkItems[1].quantity === "500" && parsedBulkItems[1].unit === "개", "parseBulkItemsText should parse piece quantity");
   console.assert(parsedLineBreakItems.length === 2, "parseBulkItemsText should split line breaks");
+  console.assert(sortRowsByReceivedDate([{ id: "old", receivedDate: "2026-04-01" }, { id: "new", receivedDate: "2026-04-29" }], "desc")[0].id === "new", "date sort descending should put latest first");
+  console.assert(sortRowsByReceivedDate([{ id: "old", receivedDate: "2026-04-01" }, { id: "new", receivedDate: "2026-04-29" }], "asc")[0].id === "old", "date sort ascending should put oldest first");
+  console.assert(truncateReason("고객변심") === "고객변...", "truncateReason should shorten long reasons to 3 characters plus ellipsis");
+  console.assert(truncateReason("파손") === "파손", "truncateReason should keep short reasons as-is");
+  console.assert(truncateReason("") === "-", "truncateReason should show dash for empty reasons");
 }
 
 if (typeof window !== "undefined") {
@@ -297,11 +316,16 @@ export default function ReturnManagementApp() {
   const [view, setView] = useState("pending");
   const [keyword, setKeyword] = useState("");
   const [previewImage, setPreviewImage] = useState(null);
+  const [previewReason, setPreviewReason] = useState(null);
+  const [previewText, setPreviewText] = useState(null);
   const [form, setForm] = useState(createEmptyForm);
   const [bulkItemsText, setBulkItemsText] = useState("");
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [errorMessage, setErrorMessage] = useState("");
+  const [sortDirection, setSortDirection] = useState("desc");
+  const [editingRow, setEditingRow] = useState(null);
+  const [editForm, setEditForm] = useState(null);
 
   const updateItem = (itemId, field, value) => {
     setForm((prev) => ({
@@ -534,7 +558,65 @@ export default function ReturnManagementApp() {
     setRows((prev) => prev.filter((item) => item.id !== row.id));
   };
 
-  const filteredRows = useMemo(() => getFilteredRows(rows, view, keyword), [rows, view, keyword]);
+  const startEditRow = (row) => {
+    setEditingRow(row);
+    setEditForm({
+      receivedDate: row.receivedDate || today(),
+      companyName: row.companyName || "",
+      itemName: row.itemName || "",
+      quantity: row.quantity || "",
+      unit: row.unit || "개",
+      reason: row.reason || "",
+      receiver: row.receiver || "",
+    });
+  };
+
+  const cancelEditRow = () => {
+    setEditingRow(null);
+    setEditForm(null);
+  };
+
+  const saveEditRow = async () => {
+    if (!editingRow || !editForm) return;
+
+    if (!editForm.companyName.trim() || !editForm.itemName.trim()) {
+      alert("상호명과 물품명은 꼭 입력해주세요.");
+      return;
+    }
+
+    setSaving(true);
+    setErrorMessage("");
+
+    const payload = {
+      received_date: editForm.receivedDate,
+      company_name: editForm.companyName.trim(),
+      item_name: editForm.itemName.trim(),
+      quantity: String(editForm.quantity || "").trim() || null,
+      quantity_unit: editForm.unit || "개",
+      reason: editForm.reason.trim() || null,
+      receiver: editForm.receiver.trim() || null,
+      updated_at: new Date().toISOString(),
+    };
+
+    const { data, error } = await supabase
+      .from("returns")
+      .update(payload)
+      .eq("id", editingRow.id)
+      .select("*")
+      .single();
+
+    if (error) {
+      setSaving(false);
+      setErrorMessage(`수정 실패: ${error.message}`);
+      return;
+    }
+
+    setRows((prev) => prev.map((row) => (row.id === editingRow.id ? dbRowToUi(data) : row)));
+    setSaving(false);
+    cancelEditRow();
+  };
+
+  const filteredRows = useMemo(() => sortRowsByReceivedDate(getFilteredRows(rows, view, keyword), sortDirection), [rows, view, keyword, sortDirection]);
   const pendingCount = rows.filter((row) => row.status === "pending").length;
   const completedCount = rows.filter((row) => row.status === "completed").length;
 
@@ -592,7 +674,7 @@ export default function ReturnManagementApp() {
             </div>
 
             <label className="block mb-4">
-              <span className="text-sm font-bold">반품받은 일자</span>
+              <span className="text-sm font-bold">반품접수일자</span>
               <input
                 type="date"
                 value={form.receivedDate}
@@ -799,19 +881,28 @@ export default function ReturnManagementApp() {
             </div>
 
             <div className="overflow-x-auto rounded-3xl border border-[#eadfca]">
-              <table className="w-full min-w-[980px] text-sm">
+              <table className="w-full min-w-[1500px] table-fixed text-sm">
                 <thead className="bg-[#fff6e8] text-[#6b6256]">
                   <tr>
-                    <th className="text-left p-4">상태</th>
-                    <th className="text-left p-4">반품받은 일자</th>
-                    <th className="text-left p-4">상호명</th>
-                    <th className="text-left p-4">물품명</th>
-                    <th className="text-left p-4">수량</th>
-                    <th className="text-left p-4">반품사유</th>
-                    <th className="text-left p-4">접수자</th>
-                    <th className="text-left p-4">사진</th>
-                    <th className="text-left p-4">완료일자</th>
-                    <th className="text-left p-4">처리</th>
+                    <th className="w-[100px] whitespace-nowrap text-center p-4 align-middle">상태</th>
+                    <th className="w-[150px] whitespace-nowrap text-center p-4 align-middle">
+                      <button
+                        type="button"
+                        onClick={() => setSortDirection((prev) => (prev === "desc" ? "asc" : "desc"))}
+                        className="mx-auto inline-flex items-center justify-center gap-1 whitespace-nowrap font-black hover:text-[#d9792b]"
+                        title="반품접수일자 정렬"
+                      >
+                        반품접수일자 {sortDirection === "desc" ? "↓" : "↑"}
+                      </button>
+                    </th>
+                    <th className="w-[220px] whitespace-nowrap text-center p-4 align-middle">상호명</th>
+                    <th className="w-[360px] whitespace-nowrap text-center p-4 align-middle">물품명</th>
+                    <th className="w-[110px] whitespace-nowrap text-center p-4 align-middle">수량</th>
+                    <th className="w-[140px] whitespace-nowrap text-center p-4 align-middle">반품사유</th>
+                    <th className="w-[120px] whitespace-nowrap text-center p-4 align-middle">접수자</th>
+                    <th className="w-[100px] whitespace-nowrap text-center p-4 align-middle">사진</th>
+                    <th className="w-[130px] whitespace-nowrap text-center p-4 align-middle">완료일자</th>
+                    <th className="w-[270px] whitespace-nowrap text-center p-4 align-middle">처리</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -830,7 +921,7 @@ export default function ReturnManagementApp() {
                   ) : (
                     filteredRows.map((row) => (
                       <tr key={row.id} className="border-t border-[#eadfca] hover:bg-[#fffaf0]">
-                        <td className="p-4">
+                        <td className="p-4 text-center align-middle whitespace-nowrap">
                           {row.status === "completed" ? (
                             <span className="inline-flex items-center gap-1 rounded-full bg-[#eef8ef] text-[#287d3c] px-3 py-1 text-xs font-black">
                               <Icon name="check" size={14} /> 완료
@@ -841,13 +932,44 @@ export default function ReturnManagementApp() {
                             </span>
                           )}
                         </td>
-                        <td className="p-4 font-semibold">{row.receivedDate}</td>
-                        <td className="p-4 font-bold">{row.companyName}</td>
-                        <td className="p-4">{row.itemName}</td>
-                        <td className="p-4 font-semibold">{row.quantity ? `${row.quantity}${row.unit || ""}` : "-"}</td>
-                        <td className="p-4 max-w-[230px] whitespace-pre-wrap">{row.reason || "-"}</td>
-                        <td className="p-4">{row.receiver || "-"}</td>
-                        <td className="p-4">
+                        <td className="p-4 text-center align-middle whitespace-nowrap font-semibold">{row.receivedDate}</td>
+                        <td className="p-4 text-center align-middle font-bold">
+                          <button
+                            type="button"
+                            onClick={() => setPreviewText({ title: "상호명 전체보기", content: row.companyName })}
+                            className="mx-auto block max-w-[190px] truncate rounded-lg px-2 py-1 hover:bg-[#fff1df] hover:text-[#d9792b]"
+                            title="클릭해서 상호명 전체보기"
+                          >
+                            {row.companyName}
+                          </button>
+                        </td>
+                        <td className="p-4 text-center align-middle">
+                          <button
+                            type="button"
+                            onClick={() => setPreviewText({ title: "물품명 전체보기", content: row.itemName })}
+                            className="mx-auto block max-w-[330px] truncate rounded-lg px-2 py-1 hover:bg-[#fff1df] hover:text-[#d9792b]"
+                            title="클릭해서 물품명 전체보기"
+                          >
+                            {row.itemName}
+                          </button>
+                        </td>
+                        <td className="p-4 text-center align-middle whitespace-nowrap font-semibold">{row.quantity ? `${row.quantity}${row.unit || ""}` : "-"}</td>
+                        <td className="p-4 text-center align-middle whitespace-nowrap">
+                          {row.reason ? (
+                            <button
+                              type="button"
+                              onClick={() => setPreviewReason(row.reason)}
+                              className="inline-flex min-w-[86px] items-center justify-center rounded-xl border border-[#dfd3bf] bg-white px-3 py-2 text-sm font-black text-[#26231d] hover:border-[#d9792b] hover:text-[#d9792b]"
+                              title="클릭해서 반품사유 전체보기"
+                            >
+                              {truncateReason(row.reason)}
+                            </button>
+                          ) : (
+                            <span className="text-[#aaa094]">-</span>
+                          )}
+                        </td>
+                        <td className="p-4 text-center align-middle whitespace-nowrap">{row.receiver || "-"}</td>
+                        <td className="p-4 text-center align-middle whitespace-nowrap">
                           {row.photoUrl ? (
                             <button
                               type="button"
@@ -860,9 +982,9 @@ export default function ReturnManagementApp() {
                             <span className="text-[#aaa094]">없음</span>
                           )}
                         </td>
-                        <td className="p-4 font-semibold">{row.completedDate || "-"}</td>
-                        <td className="p-4">
-                          <div className="flex gap-2">
+                        <td className="p-4 text-center align-middle whitespace-nowrap font-semibold">{row.completedDate || "-"}</td>
+                        <td className="p-4 text-center align-middle whitespace-nowrap">
+                          <div className="flex justify-center gap-2">
                             {row.status === "pending" ? (
                               <button
                                 type="button"
@@ -882,6 +1004,13 @@ export default function ReturnManagementApp() {
                             )}
                             <button
                               type="button"
+                              onClick={() => startEditRow(row)}
+                              className="rounded-xl border border-[#dfd3bf] px-3 py-2 text-xs font-black hover:border-[#d9792b] hover:text-[#d9792b]"
+                            >
+                              수정
+                            </button>
+                            <button
+                              type="button"
                               onClick={() => deleteRow(row)}
                               className="rounded-xl border border-[#dfd3bf] px-3 py-2 text-xs font-black hover:border-red-400 hover:text-red-500"
                               aria-label="삭제"
@@ -899,6 +1028,153 @@ export default function ReturnManagementApp() {
           </motion.section>
         </div>
       </div>
+
+      {editingRow && editForm && (
+        <div
+          className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center p-5"
+          onClick={cancelEditRow}
+        >
+          <div className="w-full max-w-xl rounded-[2rem] bg-white p-5 md:p-6" onClick={(e) => e.stopPropagation()}>
+            <div className="mb-5">
+              <p className="text-sm font-semibold text-[#d9792b]">EDIT RETURN</p>
+              <h3 className="text-2xl font-black">반품 내역 수정</h3>
+            </div>
+
+            <div className="grid gap-3">
+              <label className="block">
+                <span className="text-sm font-bold">반품접수일자</span>
+                <input
+                  type="date"
+                  value={editForm.receivedDate}
+                  onChange={(e) => setEditForm({ ...editForm, receivedDate: e.target.value })}
+                  className="mt-2 w-full rounded-2xl border border-[#dfd3bf] px-4 py-3 outline-none focus:border-[#d9792b]"
+                />
+              </label>
+              <label className="block">
+                <span className="text-sm font-bold">상호명</span>
+                <input
+                  value={editForm.companyName}
+                  onChange={(e) => setEditForm({ ...editForm, companyName: e.target.value })}
+                  className="mt-2 w-full rounded-2xl border border-[#dfd3bf] px-4 py-3 outline-none focus:border-[#d9792b]"
+                />
+              </label>
+              <label className="block">
+                <span className="text-sm font-bold">물품명</span>
+                <input
+                  value={editForm.itemName}
+                  onChange={(e) => setEditForm({ ...editForm, itemName: e.target.value })}
+                  className="mt-2 w-full rounded-2xl border border-[#dfd3bf] px-4 py-3 outline-none focus:border-[#d9792b]"
+                />
+              </label>
+              <div className="grid grid-cols-[1fr_110px] gap-2">
+                <label className="block">
+                  <span className="text-sm font-bold">수량</span>
+                  <input
+                    value={editForm.quantity}
+                    onChange={(e) => setEditForm({ ...editForm, quantity: e.target.value })}
+                    inputMode="decimal"
+                    className="mt-2 w-full rounded-2xl border border-[#dfd3bf] px-4 py-3 outline-none focus:border-[#d9792b]"
+                  />
+                </label>
+                <label className="block">
+                  <span className="text-sm font-bold">단위</span>
+                  <select
+                    value={editForm.unit}
+                    onChange={(e) => setEditForm({ ...editForm, unit: e.target.value })}
+                    className="mt-2 w-full rounded-2xl border border-[#dfd3bf] px-3 py-3 outline-none focus:border-[#d9792b]"
+                  >
+                    <option value="개">개</option>
+                    <option value="박스">박스</option>
+                  </select>
+                </label>
+              </div>
+              <label className="block">
+                <span className="text-sm font-bold">반품사유</span>
+                <textarea
+                  value={editForm.reason}
+                  onChange={(e) => setEditForm({ ...editForm, reason: e.target.value })}
+                  rows={3}
+                  className="mt-2 w-full rounded-2xl border border-[#dfd3bf] px-4 py-3 outline-none focus:border-[#d9792b] resize-none"
+                />
+              </label>
+              <label className="block">
+                <span className="text-sm font-bold">접수자</span>
+                <input
+                  value={editForm.receiver}
+                  onChange={(e) => setEditForm({ ...editForm, receiver: e.target.value })}
+                  className="mt-2 w-full rounded-2xl border border-[#dfd3bf] px-4 py-3 outline-none focus:border-[#d9792b]"
+                />
+              </label>
+            </div>
+
+            <div className="mt-5 grid grid-cols-2 gap-2">
+              <button
+                type="button"
+                onClick={cancelEditRow}
+                className="rounded-2xl border border-[#dfd3bf] py-3 font-black hover:border-[#d9792b]"
+              >
+                취소
+              </button>
+              <button
+                type="button"
+                onClick={saveEditRow}
+                disabled={saving}
+                className="rounded-2xl bg-[#d9792b] text-white py-3 font-black hover:bg-[#c86b20] disabled:opacity-60"
+              >
+                {saving ? "저장 중..." : "수정 저장"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {previewText && (
+        <div
+          className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center p-5"
+          onClick={() => setPreviewText(null)}
+        >
+          <div className="w-full max-w-xl rounded-[2rem] bg-white p-5 md:p-6" onClick={(e) => e.stopPropagation()}>
+            <div className="mb-4">
+              <p className="text-sm font-semibold text-[#d9792b]">DETAIL VIEW</p>
+              <h3 className="text-2xl font-black">{previewText.title}</h3>
+            </div>
+            <div className="min-h-[110px] rounded-2xl border border-[#eadfca] bg-[#fffaf0] p-5 text-lg font-semibold leading-relaxed whitespace-pre-wrap break-words">
+              {previewText.content}
+            </div>
+            <button
+              type="button"
+              onClick={() => setPreviewText(null)}
+              className="mt-4 w-full rounded-2xl bg-[#26231d] text-white font-black py-3"
+            >
+              닫기
+            </button>
+          </div>
+        </div>
+      )}
+
+      {previewReason && (
+        <div
+          className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center p-5"
+          onClick={() => setPreviewReason(null)}
+        >
+          <div className="w-full max-w-lg rounded-[2rem] bg-white p-5 md:p-6" onClick={(e) => e.stopPropagation()}>
+            <div className="mb-4">
+              <p className="text-sm font-semibold text-[#d9792b]">RETURN REASON</p>
+              <h3 className="text-2xl font-black">반품사유 전체보기</h3>
+            </div>
+            <div className="min-h-[120px] rounded-2xl border border-[#eadfca] bg-[#fffaf0] p-5 text-lg font-semibold leading-relaxed whitespace-pre-wrap">
+              {previewReason}
+            </div>
+            <button
+              type="button"
+              onClick={() => setPreviewReason(null)}
+              className="mt-4 w-full rounded-2xl bg-[#26231d] text-white font-black py-3"
+            >
+              닫기
+            </button>
+          </div>
+        </div>
+      )}
 
       {previewImage && (
         <div
