@@ -336,7 +336,7 @@ function EditableCell({ row, field, label, onSave }) {
         className="w-full min-w-0 rounded-lg border border-[#d9792b] px-2 py-2" />
       {field === "quantity" && <select aria-label="수량 단위" value={unit} disabled={busy} onChange={(e) => setUnit(e.target.value)} className="rounded-lg border p-1"><option>개</option><option>박스</option></select>}
       <div className="flex justify-center gap-1"><button type="button" disabled={busy} onClick={save} className="rounded-lg bg-[#26231d] px-2 py-1 text-xs text-white">{busy ? "저장 중" : "저장"}</button><button type="button" disabled={busy} onClick={() => setEditing(false)} className="rounded-lg border px-2 py-1 text-xs">취소</button></div>
-    </div> : <button type="button" aria-label={label + " 수정"} title="클릭하여 수정" onClick={() => { setDraft(String(row[field] || "")); setUnit(row.unit || "개"); setEditing(true); }} className="cell-value w-full rounded-lg hover:bg-[#fff1df] hover:text-[#d9792b]">
+    </div> : <button type="button" aria-label={label + " 수정"} title={(row[field] || "미입력") + " · 클릭하여 수정"} onClick={() => { setDraft(String(row[field] || "")); setUnit(row.unit || "개"); setEditing(true); }} className="cell-value w-full rounded-lg hover:bg-[#fff1df] hover:text-[#d9792b]">
       {field === "quantity" ? (row.quantity ? row.quantity + (row.unit || "") : "-") : row[field] || "-"}
     </button>}
   </td>;
@@ -681,17 +681,19 @@ export default function ReturnManagementApp() {
   return (
     <main className="min-h-screen w-full bg-[#f7f3ea] text-[#26231d] p-4 md:p-8 overflow-x-hidden">
       <style>{`
-        .return-table { font-size: 12px; }
-        .return-table th { padding: 12px 3px; overflow-wrap: anywhere; }
-        .return-table td { padding: 8px 3px; white-space: normal; overflow-wrap: anywhere; }
-        .return-table .cell-value { min-height: 36px; padding: 6px 2px; line-height: 1.5; overflow-wrap: anywhere; }
+        .return-table { font-size: 12px; line-height: 1.4; }
+        .return-table th { padding: 10px 4px; font-size: 12px; font-weight: 600; border-right: 1px solid #e8ddc8; }
+        .return-table td { padding: 5px 4px; white-space: nowrap; border-right: 1px solid #eee6d8; }
+        .return-table th:last-child, .return-table td:last-child { border-right: 0; }
+        .return-table .cell-value { display: block; min-height: 30px; padding: 5px 2px; font-size: 12px; line-height: 1.4; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
         .return-table td > span { padding: 4px; gap: 2px; flex-wrap: wrap; justify-content: center; }
         .return-table td > span svg { display: none; }
-        .return-table .row-actions button { padding: 5px 6px; min-height: 30px; font-size: 11px; }
-        .return-table td > button { padding: 5px 2px; font-size: 11px; gap: 1px; flex-wrap: wrap; justify-content: center; }
+        .return-table .row-actions { gap: 3px; }
+        .return-table .row-actions button { padding: 4px; min-height: 28px; font-size: 10px; }
+        .return-table td > button { padding: 5px 2px; font-size: 12px; gap: 1px; justify-content: center; }
         .editable-cell { position: relative; }
         .cell-editor { position: absolute; z-index: 20; left: 50%; top: 50%; transform: translate(-50%, -50%); width: 230px; max-width: calc(100vw - 40px); padding: 12px; border: 1px solid #d9792b; border-radius: 12px; background: white; box-shadow: 0 8px 24px #26231d26; font-size: 14px; }
-        @media (max-width: 640px) { .return-table { font-size: 10px; } .return-table th, .return-table td { padding: 6px 1px; } .return-table .row-actions button { padding: 4px 2px; font-size: 10px; } }
+        @media (max-width: 640px) { .return-table th, .return-table td { padding: 5px 1px; } .return-table th { font-size: 11px; } .return-table .row-actions button { padding: 4px 2px; font-size: 10px; } }
       `}</style>
       <div className="mx-auto w-full max-w-none">
         <motion.section
