@@ -61,6 +61,8 @@ function createEmptyForm() {
     items: [createEmptyItem()],
     reason: "",
     receiver: "",
+    inspector: "",
+    confirmer: "",
     photoFile: null,
     photoPreview: "",
     photoName: "",
@@ -124,6 +126,8 @@ function dbRowToUi(row) {
     unit: row.quantity_unit || "개",
     reason: row.reason || "",
     receiver: row.receiver || "",
+    inspector: row.inspector || "",
+    confirmer: row.confirmer || "",
     photoUrl: row.photo_url || "",
     photoPath: row.photo_path || "",
     status: row.status,
@@ -137,7 +141,7 @@ function getFilteredRows(rows, view, keyword) {
 
   return rows.filter((row) => {
     const byView = view === "all" ? true : row.status === view;
-    const text = `${row.companyName || ""} ${row.itemName || ""} ${row.quantity || ""} ${row.unit || ""} ${row.reason || ""} ${row.receiver || ""}`.toLowerCase();
+    const text = `${row.companyName || ""} ${row.itemName || ""} ${row.quantity || ""} ${row.unit || ""} ${row.reason || ""} ${row.receiver || ""} ${row.inspector || ""} ${row.confirmer || ""}`.toLowerCase();
     const byKeyword = cleanKeyword ? text.includes(cleanKeyword) : true;
     return byView && byKeyword;
   });
@@ -475,6 +479,8 @@ export default function ReturnManagementApp() {
         quantity_unit: item.unit,
         reason: form.reason.trim() || null,
         receiver: form.receiver.trim() || null,
+        inspector: form.inspector.trim() || null,
+        confirmer: form.confirmer.trim() || null,
         photo_url: photoUrl || null,
         photo_path: photoPath || null,
         status: "pending",
@@ -568,6 +574,8 @@ export default function ReturnManagementApp() {
       unit: row.unit || "개",
       reason: row.reason || "",
       receiver: row.receiver || "",
+      inspector: row.inspector || "",
+      confirmer: row.confirmer || "",
     });
   };
 
@@ -595,6 +603,8 @@ export default function ReturnManagementApp() {
       quantity_unit: editForm.unit || "개",
       reason: editForm.reason.trim() || null,
       receiver: editForm.receiver.trim() || null,
+      inspector: editForm.inspector.trim() || null,
+      confirmer: editForm.confirmer.trim() || null,
       updated_at: new Date().toISOString(),
     };
 
@@ -791,6 +801,24 @@ export default function ReturnManagementApp() {
                 className="mt-2 w-full rounded-2xl border border-[#dfd3bf] px-4 py-3 outline-none focus:border-[#d9792b]"
               />
             </label>
+            <label className="block mb-4">
+              <span className="text-sm font-bold">검수자</span>
+              <input
+                value={form.inspector}
+                onChange={(e) => setForm({ ...form, inspector: e.target.value })}
+                placeholder="예: 김대리"
+                className="mt-2 w-full rounded-2xl border border-[#dfd3bf] px-4 py-3 outline-none focus:border-[#d9792b]"
+              />
+            </label>
+            <label className="block mb-4">
+              <span className="text-sm font-bold">확인자</span>
+              <input
+                value={form.confirmer}
+                onChange={(e) => setForm({ ...form, confirmer: e.target.value })}
+                placeholder="예: 김대리"
+                className="mt-2 w-full rounded-2xl border border-[#dfd3bf] px-4 py-3 outline-none focus:border-[#d9792b]"
+              />
+            </label>
 
             <div className="mb-5">
               <span className="text-sm font-bold">반품사진 업로드</span>
@@ -881,7 +909,7 @@ export default function ReturnManagementApp() {
             </div>
 
             <div className="w-full overflow-x-auto rounded-3xl border border-[#eadfca]">
-              <table className="w-full min-w-[1500px] table-fixed text-sm">
+              <table className="w-full min-w-[1790px] table-fixed text-sm">
                 <thead className="bg-[#fff6e8] text-[#6b6256]">
                   <tr>
                     <th className="w-[100px] whitespace-nowrap text-center p-4 align-middle">상태</th>
@@ -900,6 +928,8 @@ export default function ReturnManagementApp() {
                     <th className="w-[110px] whitespace-nowrap text-center p-4 align-middle">수량</th>
                     <th className="w-[140px] whitespace-nowrap text-center p-4 align-middle">반품사유</th>
                     <th className="w-[120px] whitespace-nowrap text-center p-4 align-middle">접수자</th>
+                    <th className="w-[120px] whitespace-nowrap text-center p-4 align-middle">검수자</th>
+                    <th className="w-[120px] whitespace-nowrap text-center p-4 align-middle">확인자</th>
                     <th className="w-[100px] whitespace-nowrap text-center p-4 align-middle">사진</th>
                     <th className="w-[130px] whitespace-nowrap text-center p-4 align-middle">완료일자</th>
                     <th className="w-[270px] whitespace-nowrap text-center p-4 align-middle">처리</th>
@@ -908,13 +938,13 @@ export default function ReturnManagementApp() {
                 <tbody>
                   {loading ? (
                     <tr>
-                      <td colSpan="10" className="p-10 text-center text-[#8b8174]">
+                      <td colSpan="12" className="p-10 text-center text-[#8b8174]">
                         불러오는 중...
                       </td>
                     </tr>
                   ) : filteredRows.length === 0 ? (
                     <tr>
-                      <td colSpan="10" className="p-10 text-center text-[#8b8174]">
+                      <td colSpan="12" className="p-10 text-center text-[#8b8174]">
                         등록된 반품 내역이 없습니다.
                       </td>
                     </tr>
@@ -969,6 +999,8 @@ export default function ReturnManagementApp() {
                           )}
                         </td>
                         <td className="p-4 text-center align-middle whitespace-nowrap">{row.receiver || "-"}</td>
+                        <td className="p-4 text-center align-middle whitespace-nowrap">{row.inspector || "-"}</td>
+                        <td className="p-4 text-center align-middle whitespace-nowrap">{row.confirmer || "-"}</td>
                         <td className="p-4 text-center align-middle whitespace-nowrap">
                           {row.photoUrl ? (
                             <button
@@ -1102,6 +1134,22 @@ export default function ReturnManagementApp() {
                 <input
                   value={editForm.receiver}
                   onChange={(e) => setEditForm({ ...editForm, receiver: e.target.value })}
+                  className="mt-2 w-full rounded-2xl border border-[#dfd3bf] px-4 py-3 outline-none focus:border-[#d9792b]"
+                />
+              </label>
+            <label className="block">
+                <span className="text-sm font-bold">검수자</span>
+                <input
+                  value={editForm.inspector}
+                  onChange={(e) => setEditForm({ ...editForm, inspector: e.target.value })}
+                  className="mt-2 w-full rounded-2xl border border-[#dfd3bf] px-4 py-3 outline-none focus:border-[#d9792b]"
+                />
+              </label>
+            <label className="block">
+                <span className="text-sm font-bold">확인자</span>
+                <input
+                  value={editForm.confirmer}
+                  onChange={(e) => setEditForm({ ...editForm, confirmer: e.target.value })}
                   className="mt-2 w-full rounded-2xl border border-[#dfd3bf] px-4 py-3 outline-none focus:border-[#d9792b]"
                 />
               </label>
