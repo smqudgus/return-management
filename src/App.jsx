@@ -315,8 +315,36 @@ if (typeof window !== "undefined") {
   runSelfTests();
 }
 
+function EditableCell({ row, field, label, onSave }) {
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState("");
+  const [unit, setUnit] = useState("개");
+  const [busy, setBusy] = useState(false);
+  const save = async () => {
+    if (busy) return;
+    if ((field === "companyName" || field === "itemName" || field === "receivedDate") && !draft.trim()) return;
+    setBusy(true);
+    const ok = await onSave(row.id, field, draft, unit);
+    setBusy(false);
+    if (ok) setEditing(false);
+  };
+  return <td className="p-3 text-center align-middle">
+    {editing ? <div className="grid gap-2 min-w-0">
+      <input autoFocus aria-label={label + " 입력"} type={field === "receivedDate" ? "date" : "text"}
+        value={draft} disabled={busy} onChange={(e) => setDraft(e.target.value)}
+        onKeyDown={(e) => { if (e.nativeEvent.isComposing) return; if (e.key === "Enter") { e.preventDefault(); save(); } if (e.key === "Escape" && !busy) setEditing(false); }}
+        className="w-full min-w-0 rounded-lg border border-[#d9792b] px-2 py-2" />
+      {field === "quantity" && <select aria-label="수량 단위" value={unit} disabled={busy} onChange={(e) => setUnit(e.target.value)} className="rounded-lg border p-1"><option>개</option><option>박스</option></select>}
+      <div className="flex justify-center gap-1"><button type="button" disabled={busy} onClick={save} className="rounded-lg bg-[#26231d] px-2 py-1 text-xs text-white">{busy ? "저장 중" : "저장"}</button><button type="button" disabled={busy} onClick={() => setEditing(false)} className="rounded-lg border px-2 py-1 text-xs">취소</button></div>
+    </div> : <button type="button" aria-label={label + " 수정"} title="클릭하여 수정" onClick={() => { setDraft(String(row[field] || "")); setUnit(row.unit || "개"); setEditing(true); }} className="w-full rounded-lg px-2 py-2 hover:bg-[#fff1df] hover:text-[#d9792b] break-words">
+      {field === "quantity" ? (row.quantity ? row.quantity + (row.unit || "") : "-") : row[field] || "-"}
+    </button>}
+  </td>;
+}
+
 export default function ReturnManagementApp() {
   const [rows, setRows] = useState([]);
+  const [page, setPage] = useState(1);
   const [view, setView] = useState("pending");
   const [keyword, setKeyword] = useState("");
   const [previewImage, setPreviewImage] = useState(null);
@@ -497,6 +525,7 @@ export default function ReturnManagementApp() {
       setRows((prev) => [...(data || []).map(dbRowToUi), ...prev]);
       resetForm();
       setView("pending");
+      setPage(1);
 
       if (uploadWarning) {
         setErrorMessage(`${uploadWarning} 반품 내역은 사진 없이 등록되었습니다. Supabase Storage의 return-photos 버킷과 정책을 확인해주세요.`);
@@ -626,7 +655,26 @@ export default function ReturnManagementApp() {
     cancelEditRow();
   };
 
+  const saveCell = async (id, field, value, unit) => {
+    const columns = { receivedDate: "received_date", companyName: "company_name", itemName: "item_name", quantity: "quantity", reason: "reason", receiver: "receiver", inspector: "inspector", confirmer: "confirmer" };
+    const payload = { [columns[field]]: value.trim() || null, updated_at: new Date().toISOString() };
+    if (field === "quantity") payload.quantity_unit = unit;
+    setErrorMessage("");
+    try {
+      const { data, error } = await supabase.from("returns").update(payload).eq("id", id).select("*").single();
+      if (error) throw error;
+      setRows((prev) => prev.map((row) => row.id === id ? dbRowToUi(data) : row));
+      return true;
+    } catch (error) {
+      setErrorMessage("수정 실패: " + error.message);
+      return false;
+    }
+  };
+
   const filteredRows = useMemo(() => sortRowsByReceivedDate(getFilteredRows(rows, view, keyword), sortDirection), [rows, view, keyword, sortDirection]);
+  const pageCount = Math.max(1, Math.ceil(filteredRows.length / 15));
+  const currentPage = Math.min(page, pageCount);
+  const visibleRows = filteredRows.slice((currentPage - 1) * 15, currentPage * 15);
   const pendingCount = rows.filter((row) => row.status === "pending").length;
   const completedCount = rows.filter((row) => row.status === "completed").length;
 
@@ -876,7 +924,7 @@ export default function ReturnManagementApp() {
                   <Icon name="search" size={18} className="absolute left-4 top-1/2 -translate-y-1/2 text-[#7b7062]" />
                   <input
                     value={keyword}
-                    onChange={(e) => setKeyword(e.target.value)}
+                    onChange={(e) => { setKeyword(e.target.value); setPage(1); }}
                     placeholder="상호명/물품명 검색"
                     className="w-full sm:w-64 rounded-2xl border border-[#dfd3bf] pl-11 pr-4 py-3 outline-none focus:border-[#d9792b]"
                   />
@@ -885,21 +933,21 @@ export default function ReturnManagementApp() {
                 <div className="flex rounded-2xl bg-[#f7f3ea] p-1 border border-[#eadfca]">
                   <button
                     type="button"
-                    onClick={() => setView("pending")}
+                    onClick={() => { setView("pending"); setPage(1); }}
                     className={`px-4 py-2 rounded-xl text-sm font-bold ${view === "pending" ? "bg-white shadow-sm text-[#d9792b]" : "text-[#7b7062]"}`}
                   >
                     대기
                   </button>
                   <button
                     type="button"
-                    onClick={() => setView("completed")}
+                    onClick={() => { setView("completed"); setPage(1); }}
                     className={`px-4 py-2 rounded-xl text-sm font-bold ${view === "completed" ? "bg-white shadow-sm text-[#d9792b]" : "text-[#7b7062]"}`}
                   >
                     완료
                   </button>
                   <button
                     type="button"
-                    onClick={() => setView("all")}
+                    onClick={() => { setView("all"); setPage(1); }}
                     className={`px-4 py-2 rounded-xl text-sm font-bold ${view === "all" ? "bg-white shadow-sm text-[#d9792b]" : "text-[#7b7062]"}`}
                   >
                     전체보기
@@ -916,7 +964,7 @@ export default function ReturnManagementApp() {
                     <th className="w-[150px] whitespace-nowrap text-center p-4 align-middle">
                       <button
                         type="button"
-                        onClick={() => setSortDirection((prev) => (prev === "desc" ? "asc" : "desc"))}
+                        onClick={() => { setSortDirection((prev) => (prev === "desc" ? "asc" : "desc")); setPage(1); }}
                         className="mx-auto inline-flex items-center justify-center gap-1 whitespace-nowrap font-black hover:text-[#d9792b]"
                         title="반품접수일자 정렬"
                       >
@@ -949,7 +997,7 @@ export default function ReturnManagementApp() {
                       </td>
                     </tr>
                   ) : (
-                    filteredRows.map((row) => (
+                    visibleRows.map((row) => (
                       <tr key={row.id} className="border-t border-[#eadfca] hover:bg-[#fffaf0]">
                         <td className="p-4 text-center align-middle whitespace-nowrap">
                           {row.status === "completed" ? (
@@ -962,45 +1010,14 @@ export default function ReturnManagementApp() {
                             </span>
                           )}
                         </td>
-                        <td className="p-4 text-center align-middle whitespace-nowrap font-semibold">{row.receivedDate}</td>
-                        <td className="p-4 text-center align-middle font-bold">
-                          <button
-                            type="button"
-                            onClick={() => setPreviewText({ title: "상호명 전체보기", content: row.companyName })}
-                            className="mx-auto block max-w-[190px] truncate rounded-lg px-2 py-1 hover:bg-[#fff1df] hover:text-[#d9792b]"
-                            title="클릭해서 상호명 전체보기"
-                          >
-                            {row.companyName}
-                          </button>
-                        </td>
-                        <td className="p-4 text-center align-middle">
-                          <button
-                            type="button"
-                            onClick={() => setPreviewText({ title: "물품명 전체보기", content: row.itemName })}
-                            className="mx-auto block max-w-[330px] truncate rounded-lg px-2 py-1 hover:bg-[#fff1df] hover:text-[#d9792b]"
-                            title="클릭해서 물품명 전체보기"
-                          >
-                            {row.itemName}
-                          </button>
-                        </td>
-                        <td className="p-4 text-center align-middle whitespace-nowrap font-semibold">{row.quantity ? `${row.quantity}${row.unit || ""}` : "-"}</td>
-                        <td className="p-4 text-center align-middle whitespace-nowrap">
-                          {row.reason ? (
-                            <button
-                              type="button"
-                              onClick={() => setPreviewReason(row.reason)}
-                              className="inline-flex min-w-[86px] items-center justify-center rounded-xl border border-[#dfd3bf] bg-white px-3 py-2 text-sm font-black text-[#26231d] hover:border-[#d9792b] hover:text-[#d9792b]"
-                              title="클릭해서 반품사유 전체보기"
-                            >
-                              {truncateReason(row.reason)}
-                            </button>
-                          ) : (
-                            <span className="text-[#aaa094]">-</span>
-                          )}
-                        </td>
-                        <td className="p-4 text-center align-middle whitespace-nowrap">{row.receiver || "-"}</td>
-                        <td className="p-4 text-center align-middle whitespace-nowrap">{row.inspector || "-"}</td>
-                        <td className="p-4 text-center align-middle whitespace-nowrap">{row.confirmer || "-"}</td>
+                        <EditableCell key={row.id + "-receivedDate"} row={row} field="receivedDate" label="반품접수일자" onSave={saveCell} />
+                        <EditableCell key={row.id + "-companyName"} row={row} field="companyName" label="상호명" onSave={saveCell} />
+                        <EditableCell key={row.id + "-itemName"} row={row} field="itemName" label="물품명" onSave={saveCell} />
+                        <EditableCell key={row.id + "-quantity"} row={row} field="quantity" label="수량" onSave={saveCell} />
+                        <EditableCell key={row.id + "-reason"} row={row} field="reason" label="반품사유" onSave={saveCell} />
+                        <EditableCell key={row.id + "-receiver"} row={row} field="receiver" label="접수자" onSave={saveCell} />
+                        <EditableCell key={row.id + "-inspector"} row={row} field="inspector" label="검수자" onSave={saveCell} />
+                        <EditableCell key={row.id + "-confirmer"} row={row} field="confirmer" label="확인자" onSave={saveCell} />
                         <td className="p-4 text-center align-middle whitespace-nowrap">
                           {row.photoUrl ? (
                             <button
@@ -1056,6 +1073,14 @@ export default function ReturnManagementApp() {
                   )}
                 </tbody>
               </table>
+            </div>
+            <div className="mt-4 flex flex-wrap items-center justify-between gap-3">
+              <p className="text-sm text-[#6b6256]">총 {filteredRows.length}개 · 페이지당 15개 · {currentPage} / {pageCount} 페이지</p>
+              <nav aria-label="반품 내역 페이지" className="flex flex-wrap gap-2">
+                <button type="button" disabled={currentPage === 1} onClick={() => setPage(currentPage - 1)} className="rounded-xl border px-3 py-2 disabled:opacity-40">이전</button>
+                {Array.from({ length: pageCount }, (_, index) => index + 1).map((number) => <button key={number} type="button" aria-label={number + " 페이지"} aria-current={currentPage === number ? "page" : undefined} onClick={() => setPage(number)} className={"rounded-xl border px-3 py-2 " + (currentPage === number ? "bg-[#26231d] text-white" : "bg-white")}>{number}</button>)}
+                <button type="button" disabled={currentPage === pageCount} onClick={() => setPage(currentPage + 1)} className="rounded-xl border px-3 py-2 disabled:opacity-40">다음</button>
+              </nav>
             </div>
           </motion.section>
         </div>
@@ -1244,3 +1269,4 @@ export default function ReturnManagementApp() {
     </main>
   );
 }
+
