@@ -681,6 +681,14 @@ export default function ReturnManagementApp() {
   return (
     <main className="min-h-screen w-full bg-[#f7f3ea] text-[#26231d] p-4 md:p-8 overflow-x-hidden">
       <style>{`
+        .registration-grid { display: grid; grid-template-columns: minmax(0,1fr); gap: 20px; align-items: start; }
+        .registration-form input:not([type="file"]), .registration-form select { min-width: 0; padding: 8px 10px; font-size: 13px; }
+        .registration-form textarea { padding: 8px 10px; font-size: 13px; }
+        .registration-form label.block { margin-bottom: 12px; }
+        .registration-form label.cursor-pointer { min-height: 110px; }
+        .registration-form .space-y-3 { max-height: 280px; overflow-y: auto; padding-right: 4px; }
+        @media (min-width: 768px) { .registration-grid { grid-template-columns: repeat(2, minmax(0,1fr)); } }
+        @media (min-width: 1100px) { .registration-grid { grid-template-columns: minmax(0,1fr) minmax(0,1.2fr) minmax(0,.85fr); } }
         .return-table { font-size: 12px; line-height: 1.4; }
         .return-table th { padding: 10px 4px; font-size: 12px; font-weight: 600; border-right: 1px solid #e8ddc8; }
         .return-table td { padding: 5px 4px; white-space: nowrap; border-right: 1px solid #eee6d8; }
@@ -736,7 +744,7 @@ export default function ReturnManagementApp() {
             animate={{ opacity: 1, y: 0 }}
             transition={{ delay: 0.05 }}
             onSubmit={addRow}
-            className="mt-4 max-w-2xl rounded-2xl bg-white p-2 h-fit"
+            className="registration-form mt-4 w-full rounded-2xl bg-white p-2 h-fit"
           >
             <div className="flex items-center gap-2 mb-5">
               <div className="w-10 h-10 rounded-2xl bg-[#fff1df] flex items-center justify-center text-[#d9792b]">
@@ -748,6 +756,8 @@ export default function ReturnManagementApp() {
               </div>
             </div>
 
+            <div className="registration-grid">
+              <div className="min-w-0">
             <label className="block mb-4">
               <span className="text-sm font-bold">반품접수일자</span>
               <input
@@ -768,6 +778,49 @@ export default function ReturnManagementApp() {
               />
             </label>
 
+            <label className="block mb-4">
+              <span className="text-sm font-bold">반품사유</span>
+              <textarea
+                value={form.reason}
+                onChange={(e) => setForm({ ...form, reason: e.target.value })}
+                placeholder="예: 파손, 오배송, 수량 부족 등"
+                rows={3}
+                className="mt-2 w-full rounded-2xl border border-[#dfd3bf] px-4 py-3 outline-none focus:border-[#d9792b] resize-none"
+              />
+            </label>
+
+                <div className="grid grid-cols-3 gap-2">
+            <label className="block mb-4">
+              <span className="text-sm font-bold">반품접수자</span>
+              <input
+                value={form.receiver}
+                onChange={(e) => setForm({ ...form, receiver: e.target.value })}
+                placeholder="예: 김대리"
+                className="mt-2 w-full rounded-2xl border border-[#dfd3bf] px-4 py-3 outline-none focus:border-[#d9792b]"
+              />
+            </label>
+            <label className="block mb-4">
+              <span className="text-sm font-bold">검수자</span>
+              <input
+                value={form.inspector}
+                onChange={(e) => setForm({ ...form, inspector: e.target.value })}
+                placeholder="예: 김대리"
+                className="mt-2 w-full rounded-2xl border border-[#dfd3bf] px-4 py-3 outline-none focus:border-[#d9792b]"
+              />
+            </label>
+            <label className="block mb-4">
+              <span className="text-sm font-bold">확인자</span>
+              <input
+                value={form.confirmer}
+                onChange={(e) => setForm({ ...form, confirmer: e.target.value })}
+                placeholder="예: 김대리"
+                className="mt-2 w-full rounded-2xl border border-[#dfd3bf] px-4 py-3 outline-none focus:border-[#d9792b]"
+              />
+            </label>
+
+                </div>
+              </div>
+              <div className="min-w-0">
             <div className="mb-4">
               <div className="mb-4 rounded-2xl border border-[#eadfca] bg-[#fffaf0] p-3">
                 <div className="flex items-center justify-between gap-3 mb-2">
@@ -846,45 +899,8 @@ export default function ReturnManagementApp() {
               </div>
             </div>
 
-            <label className="block mb-4">
-              <span className="text-sm font-bold">반품사유</span>
-              <textarea
-                value={form.reason}
-                onChange={(e) => setForm({ ...form, reason: e.target.value })}
-                placeholder="예: 파손, 오배송, 수량 부족 등"
-                rows={3}
-                className="mt-2 w-full rounded-2xl border border-[#dfd3bf] px-4 py-3 outline-none focus:border-[#d9792b] resize-none"
-              />
-            </label>
-
-            <label className="block mb-4">
-              <span className="text-sm font-bold">반품접수자</span>
-              <input
-                value={form.receiver}
-                onChange={(e) => setForm({ ...form, receiver: e.target.value })}
-                placeholder="예: 김대리"
-                className="mt-2 w-full rounded-2xl border border-[#dfd3bf] px-4 py-3 outline-none focus:border-[#d9792b]"
-              />
-            </label>
-            <label className="block mb-4">
-              <span className="text-sm font-bold">검수자</span>
-              <input
-                value={form.inspector}
-                onChange={(e) => setForm({ ...form, inspector: e.target.value })}
-                placeholder="예: 김대리"
-                className="mt-2 w-full rounded-2xl border border-[#dfd3bf] px-4 py-3 outline-none focus:border-[#d9792b]"
-              />
-            </label>
-            <label className="block mb-4">
-              <span className="text-sm font-bold">확인자</span>
-              <input
-                value={form.confirmer}
-                onChange={(e) => setForm({ ...form, confirmer: e.target.value })}
-                placeholder="예: 김대리"
-                className="mt-2 w-full rounded-2xl border border-[#dfd3bf] px-4 py-3 outline-none focus:border-[#d9792b]"
-              />
-            </label>
-
+              </div>
+              <div className="min-w-0">
             <div className="mb-5">
               <span className="text-sm font-bold">반품사진 업로드</span>
               <label className="mt-2 flex min-h-[130px] cursor-pointer items-center justify-center rounded-3xl border-2 border-dashed border-[#dfd3bf] bg-[#fffaf0] hover:border-[#d9792b] transition">
@@ -914,6 +930,8 @@ export default function ReturnManagementApp() {
             >
               {saving ? "등록 중..." : "반품 접수 등록"}
             </button>
+              </div>
+            </div>
           </motion.form>
           </details>
 
