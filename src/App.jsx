@@ -328,15 +328,15 @@ function EditableCell({ row, field, label, onSave }) {
     setBusy(false);
     if (ok) setEditing(false);
   };
-  return <td className="p-3 text-center align-middle">
-    {editing ? <div className="grid gap-2 min-w-0">
+  return <td className="editable-cell text-center align-middle">
+    {editing ? <div className="cell-editor grid gap-2" role="group" aria-label={label + " 편집"}>
       <input autoFocus aria-label={label + " 입력"} type={field === "receivedDate" ? "date" : "text"}
         value={draft} disabled={busy} onChange={(e) => setDraft(e.target.value)}
         onKeyDown={(e) => { if (e.nativeEvent.isComposing) return; if (e.key === "Enter") { e.preventDefault(); save(); } if (e.key === "Escape" && !busy) setEditing(false); }}
         className="w-full min-w-0 rounded-lg border border-[#d9792b] px-2 py-2" />
       {field === "quantity" && <select aria-label="수량 단위" value={unit} disabled={busy} onChange={(e) => setUnit(e.target.value)} className="rounded-lg border p-1"><option>개</option><option>박스</option></select>}
       <div className="flex justify-center gap-1"><button type="button" disabled={busy} onClick={save} className="rounded-lg bg-[#26231d] px-2 py-1 text-xs text-white">{busy ? "저장 중" : "저장"}</button><button type="button" disabled={busy} onClick={() => setEditing(false)} className="rounded-lg border px-2 py-1 text-xs">취소</button></div>
-    </div> : <button type="button" aria-label={label + " 수정"} title="클릭하여 수정" onClick={() => { setDraft(String(row[field] || "")); setUnit(row.unit || "개"); setEditing(true); }} className="w-full rounded-lg px-2 py-2 hover:bg-[#fff1df] hover:text-[#d9792b] break-words">
+    </div> : <button type="button" aria-label={label + " 수정"} title="클릭하여 수정" onClick={() => { setDraft(String(row[field] || "")); setUnit(row.unit || "개"); setEditing(true); }} className="cell-value w-full rounded-lg hover:bg-[#fff1df] hover:text-[#d9792b]">
       {field === "quantity" ? (row.quantity ? row.quantity + (row.unit || "") : "-") : row[field] || "-"}
     </button>}
   </td>;
@@ -680,6 +680,19 @@ export default function ReturnManagementApp() {
 
   return (
     <main className="min-h-screen w-full bg-[#f7f3ea] text-[#26231d] p-4 md:p-8 overflow-x-hidden">
+      <style>{`
+        .return-table { font-size: 12px; }
+        .return-table th { padding: 12px 3px; overflow-wrap: anywhere; }
+        .return-table td { padding: 8px 3px; white-space: normal; overflow-wrap: anywhere; }
+        .return-table .cell-value { min-height: 36px; padding: 6px 2px; line-height: 1.5; overflow-wrap: anywhere; }
+        .return-table td > span { padding: 4px; gap: 2px; flex-wrap: wrap; justify-content: center; }
+        .return-table td > span svg { display: none; }
+        .return-table .row-actions button { padding: 5px 6px; min-height: 30px; font-size: 11px; }
+        .return-table td > button { padding: 5px 2px; font-size: 11px; gap: 1px; flex-wrap: wrap; justify-content: center; }
+        .editable-cell { position: relative; }
+        .cell-editor { position: absolute; z-index: 20; left: 50%; top: 50%; transform: translate(-50%, -50%); width: 230px; max-width: calc(100vw - 40px); padding: 12px; border: 1px solid #d9792b; border-radius: 12px; background: white; box-shadow: 0 8px 24px #26231d26; font-size: 14px; }
+        @media (max-width: 640px) { .return-table { font-size: 10px; } .return-table th, .return-table td { padding: 6px 1px; } .return-table .row-actions button { padding: 4px 2px; font-size: 10px; } }
+      `}</style>
       <div className="mx-auto w-full max-w-none">
         <motion.section
           initial={{ opacity: 0, y: 16 }}
@@ -713,13 +726,15 @@ export default function ReturnManagementApp() {
           </div>
         )}
 
-        <div className="grid w-full lg:grid-cols-[420px_minmax(0,1fr)] gap-6">
+        <div className="grid w-full grid-cols-1 gap-4">
+          <details className="rounded-2xl border border-[#eadfca] bg-white p-4">
+            <summary className="cursor-pointer font-bold text-[#d9792b]">+ 반품 접수 등록 · 펼치기 / 접기</summary>
           <motion.form
             initial={{ opacity: 0, y: 16 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ delay: 0.05 }}
             onSubmit={addRow}
-            className="rounded-[2rem] bg-white border border-[#eadfca] shadow-sm p-5 md:p-6 h-fit"
+            className="mt-4 max-w-2xl rounded-2xl bg-white p-2 h-fit"
           >
             <div className="flex items-center gap-2 mb-5">
               <div className="w-10 h-10 rounded-2xl bg-[#fff1df] flex items-center justify-center text-[#d9792b]">
@@ -898,6 +913,7 @@ export default function ReturnManagementApp() {
               {saving ? "등록 중..." : "반품 접수 등록"}
             </button>
           </motion.form>
+          </details>
 
           <motion.section
             initial={{ opacity: 0, y: 16 }}
@@ -956,31 +972,31 @@ export default function ReturnManagementApp() {
               </div>
             </div>
 
-            <div className="w-full overflow-x-auto rounded-3xl border border-[#eadfca]">
-              <table className="w-full min-w-[1790px] table-fixed text-sm">
+            <div className="rounded-2xl border border-[#eadfca]">
+              <table className="return-table w-full table-fixed text-sm">
                 <thead className="bg-[#fff6e8] text-[#6b6256]">
                   <tr>
-                    <th className="w-[100px] whitespace-nowrap text-center p-4 align-middle">상태</th>
-                    <th className="w-[150px] whitespace-nowrap text-center p-4 align-middle">
+                    <th style={{ width: "4%" }} className="text-center align-middle">상태</th>
+                    <th style={{ width: "8%" }} className="text-center align-middle">
                       <button
                         type="button"
                         onClick={() => { setSortDirection((prev) => (prev === "desc" ? "asc" : "desc")); setPage(1); }}
                         className="mx-auto inline-flex items-center justify-center gap-1 whitespace-nowrap font-black hover:text-[#d9792b]"
                         title="반품접수일자 정렬"
                       >
-                        반품접수일자 {sortDirection === "desc" ? "↓" : "↑"}
+                        접수일자 {sortDirection === "desc" ? "↓" : "↑"}
                       </button>
                     </th>
-                    <th className="w-[220px] whitespace-nowrap text-center p-4 align-middle">상호명</th>
-                    <th className="w-[360px] whitespace-nowrap text-center p-4 align-middle">물품명</th>
-                    <th className="w-[110px] whitespace-nowrap text-center p-4 align-middle">수량</th>
-                    <th className="w-[140px] whitespace-nowrap text-center p-4 align-middle">반품사유</th>
-                    <th className="w-[120px] whitespace-nowrap text-center p-4 align-middle">접수자</th>
-                    <th className="w-[120px] whitespace-nowrap text-center p-4 align-middle">검수자</th>
-                    <th className="w-[120px] whitespace-nowrap text-center p-4 align-middle">확인자</th>
-                    <th className="w-[100px] whitespace-nowrap text-center p-4 align-middle">사진</th>
-                    <th className="w-[130px] whitespace-nowrap text-center p-4 align-middle">완료일자</th>
-                    <th className="w-[270px] whitespace-nowrap text-center p-4 align-middle">처리</th>
+                    <th style={{ width: "13%" }} className="text-center align-middle">상호명</th>
+                    <th style={{ width: "19%" }} className="text-center align-middle">물품명</th>
+                    <th style={{ width: "5%" }} className="text-center align-middle">수량</th>
+                    <th style={{ width: "10%" }} className="text-center align-middle">반품사유</th>
+                    <th style={{ width: "6%" }} className="text-center align-middle">접수자</th>
+                    <th style={{ width: "6%" }} className="text-center align-middle">검수자</th>
+                    <th style={{ width: "6%" }} className="text-center align-middle">확인자</th>
+                    <th style={{ width: "4%" }} className="text-center align-middle">사진</th>
+                    <th style={{ width: "8%" }} className="text-center align-middle">완료일자</th>
+                    <th style={{ width: "11%" }} className="text-center align-middle">처리</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -1033,7 +1049,7 @@ export default function ReturnManagementApp() {
                         </td>
                         <td className="p-4 text-center align-middle whitespace-nowrap font-semibold">{row.completedDate || "-"}</td>
                         <td className="p-4 text-center align-middle whitespace-nowrap">
-                          <div className="flex justify-center gap-2">
+                          <div className="row-actions flex flex-wrap justify-center gap-1">
                             {row.status === "pending" ? (
                               <button
                                 type="button"
